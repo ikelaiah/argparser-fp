@@ -168,37 +168,10 @@ begin
   end;
 end;
 
-function SplitString(const S, Delimiter: string): TArrayOfString;
-var
-  StartPos, DelimPos, ArrLen: Integer;
-  Temp: string;
-begin
-  Result := nil;
-  ArrLen := 0;
-  SetLength(Result, 0);
-  StartPos := 1;
-  while StartPos <= Length(S) do
-  begin
-    DelimPos := Pos(Delimiter, Copy(S, StartPos, Length(S) - StartPos + 1));
-    if DelimPos = 0 then
-    begin
-      SetLength(Result, ArrLen + 1);
-      Result[ArrLen] := Copy(S, StartPos, Length(S) - StartPos + 1);
-      Break;
-    end
-    else
-    begin
-      SetLength(Result, ArrLen + 1);
-      Result[ArrLen] := Copy(S, StartPos, DelimPos - 1);
-      StartPos := StartPos + DelimPos;
-      Inc(ArrLen);
-    end;
-  end;
-end;
-
 function TArgParser.ParseValue(const ValueStr: string; const ArgType: TArgType; out Value: TArgValue): Boolean;
 var
-  TempArr: TArrayOfString;
+  StringList: TStringList;
+  i: Integer;
 begin
   Result := False;
   Value.ArgType := ArgType;
@@ -225,9 +198,20 @@ begin
       end;
     atArray:
       begin
-        TempArr := SplitString(ValueStr, ',');
-        Value.Arr := TempArr;
-        Result := True;
+        StringList := TStringList.Create;
+        try
+          StringList.Delimiter := ',';
+          StringList.StrictDelimiter := True;
+          StringList.DelimitedText := ValueStr;
+          
+          SetLength(Value.Arr, StringList.Count);
+          for i := 0 to StringList.Count - 1 do
+            Value.Arr[i] := StringList[i];
+          
+          Result := True;
+        finally
+          StringList.Free;
+        end;
       end;
   end;
 end;
