@@ -231,8 +231,9 @@ var
   CurrentOpt: string;
   Value: TArgValue;
   FoundRequired: Boolean;
+  HasValue: Boolean;
 begin
-  { Auto --help }
+  { Step 0: Check for help flag first - special case that exits early }
   for i := Low(Args) to High(Args) do
     if (Args[i] = '-h') or (Args[i] = '--help') then
     begin
@@ -240,21 +241,25 @@ begin
       Exit;
     end;
   
+  { Initialize parser state }
   FHasError := False;
   FError := '';
   SetLength(FResults, 0);
   
+  { Step 1: Process command-line arguments }
   i := Low(Args);
   while i <= High(Args) do
   begin
     CurrentOpt := Args[i];
     
+    { Step 2a: Validate argument format (must start with '-') }
     if (Length(CurrentOpt) = 0) or (CurrentOpt[1] <> '-') then
     begin
       SetError('Invalid argument format');
       Exit;
     end;
     
+    { Step 2b: Validate option exists in defined options }
     OptionIdx := FindOption(CurrentOpt);
     if OptionIdx = -1 then
     begin
@@ -264,37 +269,49 @@ begin
     
     { Initialize with default value for this option (sets ArgType) }
     Value := FOptions[OptionIdx].DefaultValue;
+    HasValue := False;
     
+    { Step 2c: Parse the value based on option type }
     // For boolean options, just set to true when present
     if FOptions[OptionIdx].ArgType = atBoolean then
     begin
       Value.Bool := True;
+      HasValue := True;
     end
     // For non-boolean options, check if a value is provided
     else if (i < High(Args)) and ((Length(Args[i+1]) = 0) or (Args[i+1][1] <> '-')) then
     begin
+      { Step 2d: Validate the value can be parsed to the expected type }
       if not ParseValue(Args[i+1], FOptions[OptionIdx].ArgType, Value) then
       begin
         SetError('Invalid value for option ' + CurrentOpt);
         Exit;
       end;
+      HasValue := True;
       Inc(i); { Skip the value }
     end;
     
-    // Execute callbacks
+    // Check if a required non-boolean option is missing its value
+    if FOptions[OptionIdx].Required and (FOptions[OptionIdx].ArgType <> atBoolean) and not HasValue then
+    begin
+      SetError('Missing value for required option: ' + CurrentOpt);
+      Exit;
+    end;
+    
+    { Step 5: Execute callbacks if assigned }
     if Assigned(FOptions[OptionIdx].Callback) then
       FOptions[OptionIdx].Callback(Value);
     if Assigned(FOptions[OptionIdx].CallbackClass) then
       FOptions[OptionIdx].CallbackClass(Value);
     
-    { Store parsed value }
+    { Step 3: Store parsed value in FResults }
     SetLength(FResults, Length(FResults) + 1);
     FResults[High(FResults)].Name := FOptions[OptionIdx].LongOpt;
     FResults[High(FResults)].Value := Value;
     Inc(i);
   end;
   
-  { Check for required options that weren't provided }
+  { Step 4: Check for required options that weren't provided }
   for j := 0 to High(FOptions) do
   begin
     if FOptions[j].Required then
