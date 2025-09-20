@@ -225,13 +225,12 @@ begin
   end;
 end;
 
-procedure TArgParser.Parse(const Args: TStringDynArray);
+procedure TArgParser.Parse(const Args: TStringDynArray); 
 var
   i, j, OptionIdx: Integer;
   CurrentOpt: string;
   Value: TArgValue;
-  HasValue: Boolean;
-  RequiredOptions: array of Boolean; // Track which required options were provided
+  FoundRequired: Boolean;
 begin
   { Auto --help }
   for i := Low(Args) to High(Args) do
@@ -244,11 +243,6 @@ begin
   FHasError := False;
   FError := '';
   SetLength(FResults, 0);
-  
-  // Initialize tracking for required options
-  SetLength(RequiredOptions, Length(FOptions));
-  for i := 0 to High(FOptions) do
-    RequiredOptions[i] := False;
   
   i := Low(Args);
   while i <= High(Args) do
@@ -268,13 +262,8 @@ begin
       Exit;
     end;
     
-    // Mark this option as provided if it's required
-    if FOptions[OptionIdx].Required then
-      RequiredOptions[OptionIdx] := True;
-    
     { Initialize with default value for this option (sets ArgType) }
     Value := FOptions[OptionIdx].DefaultValue;
-    HasValue := False;
     
     // For boolean options, just set to true when present
     if FOptions[OptionIdx].ArgType = atBoolean then
@@ -284,7 +273,6 @@ begin
     // For non-boolean options, check if a value is provided
     else if (i < High(Args)) and ((Length(Args[i+1]) = 0) or (Args[i+1][1] <> '-')) then
     begin
-      HasValue := True;
       if not ParseValue(Args[i+1], FOptions[OptionIdx].ArgType, Value) then
       begin
         SetError('Invalid value for option ' + CurrentOpt);
@@ -309,10 +297,23 @@ begin
   { Check for required options that weren't provided }
   for j := 0 to High(FOptions) do
   begin
-    if FOptions[j].Required and not RequiredOptions[j] then
+    if FOptions[j].Required then
     begin
-      SetError('Missing required option: ' + FOptions[j].LongOpt);
-      Exit;
+      FoundRequired := False;
+      for i := 0 to High(FResults) do
+      begin
+        if FResults[i].Name = FOptions[j].LongOpt then
+        begin
+          FoundRequired := True;
+          Break;
+        end;
+      end;
+      
+      if not FoundRequired then
+      begin
+        SetError('Missing required option: ' + FOptions[j].LongOpt);
+        Exit;
+      end;
     end;
   end;
 end;
