@@ -13,15 +13,12 @@ unit ArgParser;
 interface
 
 uses
-  Classes, SysUtils;
+  Classes, SysUtils, Types;
 
 { TArgType: Enumeration of supported argument types. }
 type
   TArgType = (atString, atInteger, atFloat, atBoolean, atArray);
   
-  { TArrayOfString: Dynamic array of strings. }
-  TArrayOfString = array of string;
-
   { TArgValue: Container for storing a parsed argument value. }
   TArgValue = record
     ArgType: TArgType;   { The type of this value }
@@ -29,7 +26,7 @@ type
     Int: Integer;        { Value when ArgType = atInteger }
     Flt: Double;         { Value when ArgType = atFloat }
     Bool: Boolean;       { Value when ArgType = atBoolean }
-    Arr: TArrayOfString; { Value when ArgType = atArray }
+    Arr: TStringDynArray; { Value when ArgType = atArray }
   end;
 
   { TArgCallback: Procedure type for callbacks on parsed values. }
@@ -79,13 +76,15 @@ type
     procedure SetError(const AError: string);
     { Retrieve the current error message. }
     function GetError: string;
+    { Parse the provided command-line arguments array. }
+    procedure Parse(const Args: TStringDynArray);
   public
     { Initialize parser state. Call before adding any options. }
     procedure Init;
     { Add a new option with all parameters including callbacks. }
     procedure Add(const ShortOpt: Char; const LongOpt: string; const ArgType: TArgType; const HelpText: string; const Callback: TArgCallback; const CallbackClass: TArgCallbackClass; const Required: Boolean; const DefaultValue: TArgValue);
-    { Parse the provided command-line arguments array. }
-    procedure Parse(const Args: array of string);
+    { Parse command-line arguments directly from ParamStr }
+    procedure ParseCommandLine;
     { Returns True if an error occurred during parsing. }
     function HasError: Boolean;
     { Read-only property to get error message. }
@@ -102,7 +101,7 @@ type
     procedure AddString(const ShortOpt: Char; const LongOpt, HelpText: string; const Default: string = ''; const Required: Boolean = False);
     procedure AddInteger(const ShortOpt: Char; const LongOpt, HelpText: string; const Default: Integer = 0; const Required: Boolean = False);
     procedure AddFloat(const ShortOpt: Char; const LongOpt, HelpText: string; const Default: Double = 0.0; const Required: Boolean = False);
-    procedure AddBoolean(const ShortOpt: Char; const LongOpt, HelpText: string; const Default: Boolean = False; const Required: Boolean = False);
+    procedure AddBoolean(const ShortOpt: Char; const LongOpt, HelpText: string; const Default: Boolean = True; const Required: Boolean = False);
     procedure AddArray(const ShortOpt: Char; const LongOpt, HelpText: string; const Required: Boolean = False); overload;
     procedure AddArray(const ShortOpt: Char; const LongOpt, HelpText: string; const DefaultArr: array of string; const Required: Boolean = False); overload;
     { Accessors for parsed values by long option name. }
@@ -110,10 +109,20 @@ type
     function GetInteger(const LongOpt: string): Integer;
     function GetFloat(const LongOpt: string): Double;
     function GetBoolean(const LongOpt: string): Boolean;
-    function GetArray(const LongOpt: string): TArrayOfString;
+    function GetArray(const LongOpt: string): TStringDynArray;
   end;
 
 implementation
+
+function ParamStrToArray: TStringDynArray;
+var
+  i: Integer;
+begin
+  Result := nil; // Explicitly initialize to avoid warning
+  SetLength(Result, ParamCount);
+  for i := 1 to ParamCount do
+    Result[i-1] := ParamStr(i);
+end;
 
 { TArgParser }
 
@@ -216,12 +225,13 @@ begin
   end;
 end;
 
-procedure TArgParser.Parse(const Args: array of string);
+procedure TArgParser.Parse(const Args: TStringDynArray);
 var
   i, j, OptionIdx: Integer;
   CurrentOpt: string;
   Value: TArgValue;
   HasValue: Boolean;
+  RequiredOptions: array of Boolean; // Track which required options were provided
 begin
   { Auto --help }
   for i := Low(Args) to High(Args) do
@@ -230,9 +240,15 @@ begin
       ShowHelp;
       Exit;
     end;
+  
   FHasError := False;
   FError := '';
   SetLength(FResults, 0);
+  
+  // Initialize tracking for required options
+  SetLength(RequiredOptions, Length(FOptions));
+  for i := 0 to High(FOptions) do
+    RequiredOptions[i] := False;
   
   i := Low(Args);
   while i <= High(Args) do
@@ -252,10 +268,21 @@ begin
       Exit;
     end;
     
+    // Mark this option as provided if it's required
+    if FOptions[OptionIdx].Required then
+      RequiredOptions[OptionIdx] := True;
+    
     { Initialize with default value for this option (sets ArgType) }
     Value := FOptions[OptionIdx].DefaultValue;
     HasValue := False;
-    if (i < High(Args)) and (Args[i+1][1] <> '-') then
+    
+    // For boolean options, just set to true when present
+    if FOptions[OptionIdx].ArgType = atBoolean then
+    begin
+      Value.Bool := True;
+    end
+    // For non-boolean options, check if a value is provided
+    else if (i < High(Args)) and ((Length(Args[i+1]) = 0) or (Args[i+1][1] <> '-')) then
     begin
       HasValue := True;
       if not ParseValue(Args[i+1], FOptions[OptionIdx].ArgType, Value) then
@@ -264,30 +291,14 @@ begin
         Exit;
       end;
       Inc(i); { Skip the value }
-    end
-    else if FOptions[OptionIdx].ArgType <> atBoolean then
-    begin
-      SetError('Option ' + CurrentOpt + ' requires a value');
-      Exit;
     end;
     
-    if HasValue then
-    begin
-      if Assigned(FOptions[OptionIdx].Callback) then
-        FOptions[OptionIdx].Callback(Value);
-      if Assigned(FOptions[OptionIdx].CallbackClass) then
-        FOptions[OptionIdx].CallbackClass(Value);
-    end
-    else
-    begin
-      { For boolean flags without value, interpret presence as True }
-      if FOptions[OptionIdx].ArgType = atBoolean then
-        Value.Bool := True;
-      if Assigned(FOptions[OptionIdx].Callback) then
-        FOptions[OptionIdx].Callback(Value);
-      if Assigned(FOptions[OptionIdx].CallbackClass) then
-        FOptions[OptionIdx].CallbackClass(Value);
-    end;
+    // Execute callbacks
+    if Assigned(FOptions[OptionIdx].Callback) then
+      FOptions[OptionIdx].Callback(Value);
+    if Assigned(FOptions[OptionIdx].CallbackClass) then
+      FOptions[OptionIdx].CallbackClass(Value);
+    
     { Store parsed value }
     SetLength(FResults, Length(FResults) + 1);
     FResults[High(FResults)].Name := FOptions[OptionIdx].LongOpt;
@@ -295,15 +306,24 @@ begin
     Inc(i);
   end;
   
-  { Check for required options }
-  for j := Low(FOptions) to High(FOptions) do
+  { Check for required options that weren't provided }
+  for j := 0 to High(FOptions) do
   begin
-    if FOptions[j].Required and (FOptions[j].ArgType <> atBoolean) then
+    if FOptions[j].Required and not RequiredOptions[j] then
     begin
       SetError('Missing required option: ' + FOptions[j].LongOpt);
       Exit;
     end;
   end;
+end;
+
+{ Parse command-line arguments directly from ParamStr }
+procedure TArgParser.ParseCommandLine;
+var
+  Args: TStringDynArray;
+begin
+  Args := ParamStrToArray;
+  Parse(Args);
 end;
 
 procedure TArgParser.ShowHelp;
@@ -405,7 +425,7 @@ begin
 end;
 
 procedure TArgParser.AddBoolean(const ShortOpt: Char; const LongOpt, HelpText: string;
-  const Default: Boolean = False; const Required: Boolean = False);
+  const Default: Boolean = True; const Required: Boolean = False);
 var
   DefaultValue: TArgValue;
 begin
@@ -487,7 +507,7 @@ begin
   Result := False;
 end;
 
-function TArgParser.GetArray(const LongOpt: string): TArrayOfString;
+function TArgParser.GetArray(const LongOpt: string): TStringDynArray;
 var
   i: Integer;
 begin
