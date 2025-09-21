@@ -12,6 +12,10 @@ A lightweight, record-based command-line argument parser for Free Pascal. `ArgPa
 
 - **Simple API:** Define options with single-line convenience methods.
 - **Type-Safe Parsing:** Natively parse strings, integers, floats, booleans, and arrays.
+- **Flexible Syntax:** Support for multiple argument formats:
+  - Long options: `--file input.txt` or `--file=input.txt`
+  - Short options: `-f input.txt` or `-finput.txt`
+  - Boolean flags: `--verbose` or `--verbose=true/false`
 - **Automatic Help Text:** Generates `--help` and usage text from your option definitions.
 - **Callbacks:** Execute a procedure immediately when an option is parsed.
 - **Required Options:** Enforce mandatory arguments.
@@ -23,7 +27,7 @@ A lightweight, record-based command-line argument parser for Free Pascal. `ArgPa
 Here is a complete example of a simple application:
 
 ```pascal
-// File: examples/Basic/MyApp.pas
+// File: examples/MyApp/MyApp.pas
 program MyApp;
 
 uses
@@ -32,6 +36,7 @@ uses
 
 var
   Parser: TArgParser;
+  i: integer;
 
 begin
   // Initialize
@@ -42,15 +47,19 @@ begin
   Parser.AddInteger('c', 'count', 'Set count value', 5);
   Parser.AddBoolean('v', 'verbose', 'Enable verbose mode');
   Parser.AddString('f', 'file', 'Specify a file path', '', True); // Required
+  Parser.AddArray('t', 'tags', 'Comma-separated list of tags'); // Add array option
+  Parser.AddBoolean('h', 'help', 'Show this help message');
 
-  // Parse and handle errors
-  Parser.Parse(ParamStrArray);
+  // Parse command line arguments with one call
+  Parser.ParseCommandLine;
+
   if Parser.HasError then
   begin
     Writeln('Error: ', Parser.Error);
     Parser.ShowUsage;
     Halt(1);
   end;
+
 
   // Show help if requested
   if Parser.GetBoolean('help') then
@@ -62,6 +71,20 @@ begin
   // Access parsed values
   Writeln('Count: ', Parser.GetInteger('count'));
   Writeln('File: ', Parser.GetString('file'));
+
+  // Display array values if provided
+  if Length(Parser.GetArray('tags')) > 0 then
+  begin
+    Write('Tags: ');
+    for i := 0 to High(Parser.GetArray('tags')) do
+    begin
+      Write(Parser.GetArray('tags')[i]);
+      if i < High(Parser.GetArray('tags')) then
+        Write(', ');
+    end;
+    Writeln;
+  end;
+
   if Parser.GetBoolean('verbose') then
     Writeln('Verbose mode is ON');
 
@@ -74,7 +97,6 @@ Compile and run the application with --help to see the auto-generated documentat
 ```bash
 $ fpc MyApp.pas
 $ ./MyApp --help
-```
 
 **Output**
 
@@ -82,12 +104,26 @@ $ ./MyApp --help
 Usage: MyApp [options]
 
 Options:
-  -c, --count <integer>   Set count value (Default: 5)
-  -v, --verbose           Enable verbose mode
-  -f, --file <string>     Specify a file path (Required)
-  -h, --help              Show this help message
+  -h, --help     Show this help message
+  -c, --count    Set count value
+  -v, --verbose  Enable verbose mode
+  -f, --file     Specify a file path
+  -t, --tags     Comma-separated list of tags
+  -h, --help     Show this help message
 ```
 
+Example Usage
+
+```bash
+# Traditional format
+$ ./MyApp --file input.txt --count 10 --verbose
+
+# New equals format
+$ ./MyApp --file=input.txt --count=10 --verbose=true
+
+# Mixed formats
+$ ./MyApp --file=input.txt -c 10 --verbose
+```
 
 ## 📖 System Requirements
 

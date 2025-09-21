@@ -4,9 +4,10 @@ A lightweight, record-based command-line argument parser for Free Pascal. This g
 
 ## 🚀 Complete Basic Example
 
-Here’s a full example demonstrating the basic workflow: initialize, define, parse, and access.
+Here's a full example demonstrating the basic workflow: initialize, define, parse, and access.
 
 ```pascal
+// File: examples/SimpleTool/SimpleTool.pas
 program MyTool;
 
 uses
@@ -48,6 +49,53 @@ begin
   if Verbose then
     WriteLn('Verbose mode enabled.');
 end.
+```
+
+## 🎯 Supported Argument Formats
+
+ArgParser supports multiple flexible formats for specifying arguments:
+
+### Long Options
+```bash
+# Traditional space-separated format
+--file input.txt
+--count 42
+--verbose
+
+# New equals format (reduces ambiguity)
+--file=input.txt
+--count=42
+--verbose=true
+```
+
+### Short Options
+```bash
+# Space-separated format
+-f input.txt
+-c 42
+-v
+
+# Attached format (no space)
+-finput.txt
+-c42
+```
+
+### Boolean Options
+```bash
+# Flag format (sets to true)
+--verbose
+-v
+
+# Explicit format (new feature)
+--verbose=true
+--verbose=false
+--quiet=true
+```
+
+### Mixed Usage
+You can mix different formats in the same command:
+```bash
+mytool --input=data.txt -v --count 100 --output=result.txt
 ```
 
 ## ⚙️ API Quick Reference
@@ -146,7 +194,6 @@ begin
   IncludePaths := Parser.GetArray('include');
 end;
 ```
-
 
 ### 5. Error Handling & Help
 

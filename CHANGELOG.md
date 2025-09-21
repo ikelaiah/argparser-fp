@@ -17,6 +17,8 @@ First release as an independent package, previously was part of TidyKit.
 - Core features:
   - Define short (`-f`) and long (`--file`) options.
   - Parse string, integer, float, boolean, and array value types.
+  - Support for `--name=value` format for all option types.
+  - Enhanced boolean options supporting `--verbose=true/false` syntax.
   - Automatic generation of usage and help text.
   - Callback support for immediate action on parsed arguments.
   - Methods to retrieve parsed values by option name.
