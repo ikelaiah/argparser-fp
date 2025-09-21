@@ -172,13 +172,13 @@ begin
   Result := -1;
   for i := 0 to High(FOptions) do
   begin
-    if (Length(Opt) = 2) and (Opt[1] = '-') and (FOptions[i].ShortOpt = Opt[2]) then
+    if (Length(Opt) = 2) and (Opt[1] = '-') and (UpCase(FOptions[i].ShortOpt) = UpCase(Opt[2])) then
     begin
       Result := i;
       Exit;
     end
     else if (Length(Opt) > 2) and (Opt[1] = '-') and (Opt[2] = '-') and
-      (FOptions[i].LongOpt = Copy(Opt, 3, MaxInt)) then
+      SameText(FOptions[i].LongOpt, Copy(Opt, 3, MaxInt)) then
     begin
       Result := i;
       Exit;
@@ -189,6 +189,7 @@ end;
 function TArgParser.ParseValue(const ValueStr: string; const ArgType: TArgType; var Value: TArgValue): Boolean;
 var
   i: Integer;
+  s: string;
   Parts: TStringDynArray;
 begin
   Result := False;
@@ -230,16 +231,15 @@ begin
       begin
         // Use SplitString from SysUtils
         Parts := SplitString(ValueStr, ',');
-        
-        // Initialize array with the correct size
-        SetLength(Value.Arr, Length(Parts));
-        
-        // Copy and trim each part
-        for i := 0 to High(Parts) do
-          Value.Arr[i] := Trim(Parts[i]);
-        
-        // Explicitly clear the Parts array to avoid memory leaks
-        SetLength(Parts, 0);
+        for i := 0 to High(Parts) do 
+        begin
+          s := Trim(Parts[i]);
+          if s <> '' then 
+          begin
+            SetLength(Value.Arr, Length(Value.Arr)+1);
+            Value.Arr[High(Value.Arr)] := s;
+          end;
+        end;
         
         Result := True;
       end;
@@ -468,12 +468,10 @@ var
   MaxShort, MaxLong: Integer;
 begin
   { Calculate max widths for formatting }
-  MaxShort := 0;
+  MaxShort := 1;  // ShortOpt is always a single character
   MaxLong := 0;
   for i := Low(FOptions) to High(FOptions) do
   begin
-    if Length(FOptions[i].ShortOpt) > MaxShort then
-      MaxShort := Length(FOptions[i].ShortOpt);
     if Length(FOptions[i].LongOpt) > MaxLong then
       MaxLong := Length(FOptions[i].LongOpt);
   end;
@@ -481,11 +479,11 @@ begin
   WriteLn('Usage: ' + FUsage);
   WriteLn;
   WriteLn('Options:');
+
   for i := Low(FOptions) to High(FOptions) do
   begin
     Write('  ');
     Write('-' + FOptions[i].ShortOpt);
-    Write(Space(MaxShort - Length(FOptions[i].ShortOpt)));
     Write(', --' + FOptions[i].LongOpt);
     Write(Space(MaxLong - Length(FOptions[i].LongOpt)));
     Write('  ');
@@ -631,7 +629,7 @@ function TArgParser.GetString(const LongOpt: string): string;
 var
   i: Integer;
 begin
-  for i := Low(FResults) to High(FResults) do
+  for i := High(FResults) downto Low(FResults) do
     if (FResults[i].Name = LongOpt) and (FResults[i].Value.ArgType = atString) then
     begin
       Result := FResults[i].Value.Str;
@@ -644,7 +642,7 @@ function TArgParser.GetInteger(const LongOpt: string): Integer;
 var
   i: Integer;
 begin
-  for i := Low(FResults) to High(FResults) do
+  for i := High(FResults) downto Low(FResults) do
     if (FResults[i].Name = LongOpt) and (FResults[i].Value.ArgType = atInteger) then
     begin
       Result := FResults[i].Value.Int;
@@ -657,7 +655,7 @@ function TArgParser.GetFloat(const LongOpt: string): Double;
 var
   i: Integer;
 begin
-  for i := Low(FResults) to High(FResults) do
+  for i := High(FResults) downto Low(FResults) do
     if (FResults[i].Name = LongOpt) and (FResults[i].Value.ArgType = atFloat) then
     begin
       Result := FResults[i].Value.Flt;
@@ -670,7 +668,7 @@ function TArgParser.GetBoolean(const LongOpt: string): Boolean;
 var
   i: Integer;
 begin
-  for i := Low(FResults) to High(FResults) do
+  for i := High(FResults) downto Low(FResults) do
     if (FResults[i].Name = LongOpt) and (FResults[i].Value.ArgType = atBoolean) then
     begin
       Result := FResults[i].Value.Bool;
@@ -683,7 +681,7 @@ function TArgParser.GetArray(const LongOpt: string): TStringDynArray;
 var
   i: Integer;
 begin
-  for i := Low(FResults) to High(FResults) do
+  for i := High(FResults) downto Low(FResults) do
     if (FResults[i].Name = LongOpt) and (FResults[i].Value.ArgType = atArray) then
     begin
       Result := FResults[i].Value.Arr;
