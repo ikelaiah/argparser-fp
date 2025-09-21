@@ -1,3 +1,4 @@
+
 //-------------------------------------------------------------------------------
 // Unit: ArgParser
 //
@@ -13,7 +14,7 @@ unit ArgParser;
 interface
 
 uses
-  Classes, SysUtils, Types;
+  Classes, SysUtils, Types, StrUtils;
 
 { TArgType: Enumeration of supported argument types. }
 type
@@ -69,7 +70,7 @@ type
     { Locate option by input switch. }
     function FindOption(const Opt: string): Integer;
     { Convert string to TArgValue based on ArgType. }
-    function ParseValue(const ValueStr: string; const ArgType: TArgType; out Value: TArgValue): Boolean;
+    function ParseValue(const ValueStr: string; const ArgType: TArgType; var Value: TArgValue): Boolean;
     { Internal helper to add an option record. }
     procedure AddOption(const Option: TArgOption);
     { Record a parsing error. }
@@ -101,7 +102,7 @@ type
     procedure AddString(const ShortOpt: Char; const LongOpt, HelpText: string; const Default: string = ''; const Required: Boolean = False);
     procedure AddInteger(const ShortOpt: Char; const LongOpt, HelpText: string; const Default: Integer = 0; const Required: Boolean = False);
     procedure AddFloat(const ShortOpt: Char; const LongOpt, HelpText: string; const Default: Double = 0.0; const Required: Boolean = False);
-    procedure AddBoolean(const ShortOpt: Char; const LongOpt, HelpText: string; const Default: Boolean = True; const Required: Boolean = False);
+    procedure AddBoolean(const ShortOpt: Char; const LongOpt, HelpText: string; const Default: Boolean = False; const Required: Boolean = False);
     procedure AddArray(const ShortOpt: Char; const LongOpt, HelpText: string; const Required: Boolean = False); overload;
     procedure AddArray(const ShortOpt: Char; const LongOpt, HelpText: string; const DefaultArr: array of string; const Required: Boolean = False); overload;
     { Accessors for parsed values by long option name. }
@@ -127,12 +128,18 @@ end;
 { TArgParser }
 
 procedure TArgParser.Init;
+var
+  i: Integer;
 begin
-  SetLength(FOptions, 0);
-  FUsage := '';
+  for i := 0 to High(FOptions) do
+    Finalize(FOptions[i]);
+  FOptions := nil;
+  for i := 0 to High(FResults) do
+    Finalize(FResults[i].Value);
+  FResults := nil;
   FError := '';
-  FHasError := False;
-  SetLength(FResults, 0);
+  FUsage := '';
+  AddBoolean('h', 'help', 'Show this help message');
 end;
 
 procedure TArgParser.Add(const ShortOpt: Char; const LongOpt: string;
@@ -177,13 +184,25 @@ begin
   end;
 end;
 
-function TArgParser.ParseValue(const ValueStr: string; const ArgType: TArgType; out Value: TArgValue): Boolean;
+function TArgParser.ParseValue(const ValueStr: string; const ArgType: TArgType; var Value: TArgValue): Boolean;
 var
-  StringList: TStringList;
   i: Integer;
+  Parts: TStringDynArray;
 begin
   Result := False;
+
+  // Finalize previous value to prevent memory leaks
+  Finalize(Value);
+
   Value.ArgType := ArgType;
+  
+  // Initialize all fields to avoid potential memory issues
+  Value.Str := '';
+  Value.Int := 0;
+  Value.Flt := 0.0;
+  Value.Bool := False;
+  Value.Arr := nil;
+  
   case ArgType of
     atString:
       begin
@@ -207,20 +226,20 @@ begin
       end;
     atArray:
       begin
-        StringList := TStringList.Create;
-        try
-          StringList.Delimiter := ',';
-          StringList.StrictDelimiter := True;
-          StringList.DelimitedText := ValueStr;
-          
-          SetLength(Value.Arr, StringList.Count);
-          for i := 0 to StringList.Count - 1 do
-            Value.Arr[i] := StringList[i];
-          
-          Result := True;
-        finally
-          StringList.Free;
-        end;
+        // Use SplitString from SysUtils
+        Parts := SplitString(ValueStr, ',');
+        
+        // Initialize array with the correct size
+        SetLength(Value.Arr, Length(Parts));
+        
+        // Copy and trim each part
+        for i := 0 to High(Parts) do
+          Value.Arr[i] := Trim(Parts[i]);
+        
+        // Explicitly clear the Parts array to avoid memory leaks
+        SetLength(Parts, 0);
+        
+        Result := True;
       end;
   end;
 end;
@@ -232,6 +251,7 @@ var
   Value: TArgValue;
   FoundRequired: Boolean;
   HasValue: Boolean;
+  ValueStr: string;
 begin
   { Step 0: Check for help flag first - special case that exits early }
   for i := Low(Args) to High(Args) do
@@ -244,94 +264,190 @@ begin
   { Initialize parser state }
   FHasError := False;
   FError := '';
+
+  // Clear previous results to avoid memory leaks from prior runs
+  for i := 0 to High(FResults) do
+    Finalize(FResults[i].Value);
   SetLength(FResults, 0);
-  
-  { Step 1: Process command-line arguments }
-  i := Low(Args);
-  while i <= High(Args) do
-  begin
-    CurrentOpt := Args[i];
-    
-    { Step 2a: Validate argument format (must start with '-') }
-    if (Length(CurrentOpt) = 0) or (CurrentOpt[1] <> '-') then
+
+  Initialize(Value); // Ensure Value is initialized before the loop
+
+  try
+    { Step 1: Process command-line arguments }
+    i := Low(Args);
+    while i <= High(Args) do
     begin
-      SetError('Invalid argument format');
-      Exit;
-    end;
-    
-    { Step 2b: Validate option exists in defined options }
-    OptionIdx := FindOption(CurrentOpt);
-    if OptionIdx = -1 then
-    begin
-      SetError('Unknown option: ' + CurrentOpt);
-      Exit;
-    end;
-    
-    { Initialize with default value for this option (sets ArgType) }
-    Value := FOptions[OptionIdx].DefaultValue;
-    HasValue := False;
-    
-    { Step 2c: Parse the value based on option type }
-    // For boolean options, just set to true when present
-    if FOptions[OptionIdx].ArgType = atBoolean then
-    begin
-      Value.Bool := True;
-      HasValue := True;
-    end
-    // For non-boolean options, check if a value is provided
-    else if (i < High(Args)) and ((Length(Args[i+1]) = 0) or (Args[i+1][1] <> '-')) then
-    begin
-      { Step 2d: Validate the value can be parsed to the expected type }
-      if not ParseValue(Args[i+1], FOptions[OptionIdx].ArgType, Value) then
+      CurrentOpt := Args[i];
+      
+      // Handle combined short option with value (e.g., -fvalue)
+      if (Length(CurrentOpt) > 2) and (CurrentOpt[1] = '-') and (CurrentOpt[2] <> '-') and (FindOption(CurrentOpt) = -1) then
       begin
-        SetError('Invalid value for option ' + CurrentOpt);
-        Exit;
-      end;
-      HasValue := True;
-      Inc(i); { Skip the value }
-    end;
-    
-    // Check if a required non-boolean option is missing its value
-    if FOptions[OptionIdx].Required and (FOptions[OptionIdx].ArgType <> atBoolean) and not HasValue then
-    begin
-      SetError('Missing value for required option: ' + CurrentOpt);
-      Exit;
-    end;
-    
-    { Step 5: Execute callbacks if assigned }
-    if Assigned(FOptions[OptionIdx].Callback) then
-      FOptions[OptionIdx].Callback(Value);
-    if Assigned(FOptions[OptionIdx].CallbackClass) then
-      FOptions[OptionIdx].CallbackClass(Value);
-    
-    { Step 3: Store parsed value in FResults }
-    SetLength(FResults, Length(FResults) + 1);
-    FResults[High(FResults)].Name := FOptions[OptionIdx].LongOpt;
-    FResults[High(FResults)].Value := Value;
-    Inc(i);
-  end;
-  
-  { Step 4: Check for required options that weren't provided }
-  for j := 0 to High(FOptions) do
-  begin
-    if FOptions[j].Required then
-    begin
-      FoundRequired := False;
-      for i := 0 to High(FResults) do
-      begin
-        if FResults[i].Name = FOptions[j].LongOpt then
+        // Extract the option character
+        OptionIdx := -1;
+        // First check if this is a valid short option
+        for j := 0 to High(FOptions) do
         begin
-          FoundRequired := True;
-          Break;
+          if FOptions[j].ShortOpt = CurrentOpt[2] then
+          begin
+            OptionIdx := j;
+            Break;
+          end;
         end;
+        
+        // If not a valid short option, report error
+        if OptionIdx = -1 then
+        begin
+          SetError('Unknown option: ' + CurrentOpt);
+          Exit;
+        end;
+        
+        // Found a valid short option
+        Value := FOptions[OptionIdx].DefaultValue;
+        ValueStr := Copy(CurrentOpt, 3, Length(CurrentOpt) - 2);
+        
+        // For boolean options, this format is invalid
+        if FOptions[OptionIdx].ArgType = atBoolean then
+        begin
+          SetError('Invalid format for boolean option: ' + CurrentOpt);
+          Exit;
+        end;
+        
+        // For required string options, check if the value is empty
+        if FOptions[OptionIdx].Required and (FOptions[OptionIdx].ArgType = atString) and (ValueStr = '') then
+        begin
+          SetError('Empty value not allowed for required option: ' + CurrentOpt);
+          Exit;
+        end;
+        
+        // Parse the value
+        if not ParseValue(ValueStr, FOptions[OptionIdx].ArgType, Value) then
+        begin
+          SetError('Invalid value for option ' + CurrentOpt);
+          Exit;
+        end;
+        
+        // Execute callbacks if assigned
+        if Assigned(FOptions[OptionIdx].Callback) then
+          FOptions[OptionIdx].Callback(Value);
+        if Assigned(FOptions[OptionIdx].CallbackClass) then
+          FOptions[OptionIdx].CallbackClass(Value);
+        
+        // Store parsed value
+        SetLength(FResults, Length(FResults) + 1);
+        FResults[High(FResults)].Name := FOptions[OptionIdx].LongOpt;
+        FResults[High(FResults)].Value := Value;
+        
+        Inc(i);
+        Continue;
       end;
       
-      if not FoundRequired then
+      { Step 2a: Validate argument format (must start with '-') }
+      if (Length(CurrentOpt) = 0) or (CurrentOpt[1] <> '-') then
       begin
-        SetError('Missing required option: ' + FOptions[j].LongOpt);
+        SetError('Invalid argument format: ' + CurrentOpt);
         Exit;
       end;
+      
+      { Step 2b: Validate option exists in defined options }
+      OptionIdx := FindOption(CurrentOpt);
+      if OptionIdx = -1 then
+      begin
+        SetError('Unknown option: ' + CurrentOpt);
+        Exit;
+      end;
+      
+      { Initialize with default value for this option (sets ArgType) }
+      Finalize(Value); // Clean up from previous iteration
+      Value := FOptions[OptionIdx].DefaultValue;
+      HasValue := False;
+      
+      { Step 2c: Parse the value based on option type }
+      // For boolean options, just set to true when present
+      if FOptions[OptionIdx].ArgType = atBoolean then
+      begin
+        Value.Bool := True;
+        HasValue := True;
+      end
+      // For non-boolean options, check for an attached value (e.g., -fvalue)
+      else if (Length(CurrentOpt) > 2) and (CurrentOpt[2] <> '-') and (FindOption(Copy(CurrentOpt, 1, 2)) <> -1) then
+      begin
+        ValueStr := Copy(CurrentOpt, 3, Length(CurrentOpt));
+        if not ParseValue(ValueStr, FOptions[OptionIdx].ArgType, Value) then
+        begin
+          SetError('Invalid value for option ' + Copy(CurrentOpt, 1, 2));
+          Exit;
+        end;
+        HasValue := True;
+      end
+      // For non-boolean options, check if a separate value is provided
+      else if (i < High(Args)) and ((Length(Args[i+1]) = 0) or (Args[i+1][1] <> '-')) then
+      begin
+        ValueStr := Args[i+1];
+        
+        // For required string options, check if the value is empty before parsing
+        if FOptions[OptionIdx].Required and (FOptions[OptionIdx].ArgType = atString) and (ValueStr = '') then
+        begin
+          SetError('Empty value not allowed for required option: ' + CurrentOpt);
+          Exit;
+        end;
+        
+        { Step 2d: Validate the value can be parsed to the expected type }
+        if not ParseValue(ValueStr, FOptions[OptionIdx].ArgType, Value) then
+        begin
+          SetError('Invalid value for option ' + CurrentOpt);
+          Exit;
+        end;
+        
+        HasValue := True;
+        Inc(i); { Skip the value }
+      end;
+      
+      // Check if a required non-boolean option is missing its value
+      if FOptions[OptionIdx].Required and (FOptions[OptionIdx].ArgType <> atBoolean) and not HasValue then
+      begin
+        SetError('Missing value for required option: ' + CurrentOpt);
+        Exit;
+      end;
+      
+      { Step 5: Execute callbacks if assigned }
+      if Assigned(FOptions[OptionIdx].Callback) then
+        FOptions[OptionIdx].Callback(Value);
+      if Assigned(FOptions[OptionIdx].CallbackClass) then
+        FOptions[OptionIdx].CallbackClass(Value);
+      
+      { Step 3: Store parsed value in FResults }
+      SetLength(FResults, Length(FResults) + 1);
+      FResults[High(FResults)].Name := FOptions[OptionIdx].LongOpt;
+      FResults[High(FResults)].Value := Value;
+      
+      Inc(i);
     end;
+    
+    { Step 4: Check for missing required options }
+    for j := 0 to High(FOptions) do
+    begin
+      if FOptions[j].Required then
+      begin
+        FoundRequired := False;
+        for i := 0 to High(FResults) do
+        begin
+          if FResults[i].Name = FOptions[j].LongOpt then
+          begin
+            FoundRequired := True;
+            Break;
+          end;
+        end;
+        
+        if not FoundRequired then
+        begin
+          SetError('Missing required option: --' + FOptions[j].LongOpt);
+          Exit;
+        end;
+      end;
+    end;
+  finally
+    // Finalize the local Value record to free memory if an error occurred
+    Finalize(Value);
   end;
 end;
 
@@ -417,8 +533,14 @@ procedure TArgParser.AddString(const ShortOpt: Char; const LongOpt, HelpText: st
 var
   DefaultValue: TArgValue;
 begin
-  DefaultValue.Str := Default;
+  // Initialize all fields
   DefaultValue.ArgType := atString;
+  DefaultValue.Str := Default;
+  DefaultValue.Int := 0;
+  DefaultValue.Flt := 0.0;
+  DefaultValue.Bool := False;
+  DefaultValue.Arr := nil;
+  
   Add(ShortOpt, LongOpt, atString, HelpText, nil, nil, Required, DefaultValue);
 end;
 
@@ -427,8 +549,14 @@ procedure TArgParser.AddInteger(const ShortOpt: Char; const LongOpt, HelpText: s
 var
   DefaultValue: TArgValue;
 begin
-  DefaultValue.Int := Default;
+  // Initialize all fields
   DefaultValue.ArgType := atInteger;
+  DefaultValue.Str := '';
+  DefaultValue.Int := Default;
+  DefaultValue.Flt := 0.0;
+  DefaultValue.Bool := False;
+  DefaultValue.Arr := nil;
+  
   Add(ShortOpt, LongOpt, atInteger, HelpText, nil, nil, Required, DefaultValue);
 end;
 
@@ -437,18 +565,30 @@ procedure TArgParser.AddFloat(const ShortOpt: Char; const LongOpt, HelpText: str
 var
   DefaultValue: TArgValue;
 begin
-  DefaultValue.Flt := Default;
+  // Initialize all fields
   DefaultValue.ArgType := atFloat;
+  DefaultValue.Str := '';
+  DefaultValue.Int := 0;
+  DefaultValue.Flt := Default;
+  DefaultValue.Bool := False;
+  DefaultValue.Arr := nil;
+  
   Add(ShortOpt, LongOpt, atFloat, HelpText, nil, nil, Required, DefaultValue);
 end;
 
 procedure TArgParser.AddBoolean(const ShortOpt: Char; const LongOpt, HelpText: string;
-  const Default: Boolean = True; const Required: Boolean = False);
+  const Default: Boolean = False; const Required: Boolean = False);
 var
   DefaultValue: TArgValue;
 begin
-  DefaultValue.Bool := Default;
+  // Initialize all fields
   DefaultValue.ArgType := atBoolean;
+  DefaultValue.Str := '';
+  DefaultValue.Int := 0;
+  DefaultValue.Flt := 0.0;
+  DefaultValue.Bool := Default;
+  DefaultValue.Arr := nil;
+  
   Add(ShortOpt, LongOpt, atBoolean, HelpText, nil, nil, Required, DefaultValue);
 end;
 
@@ -456,8 +596,14 @@ procedure TArgParser.AddArray(const ShortOpt: Char; const LongOpt, HelpText: str
 var
   DefaultValue: TArgValue;
 begin
+  // Initialize all fields
   DefaultValue.ArgType := atArray;
+  DefaultValue.Str := '';
+  DefaultValue.Int := 0;
+  DefaultValue.Flt := 0.0;
+  DefaultValue.Bool := False;
   DefaultValue.Arr := nil;
+  
   Add(ShortOpt, LongOpt, atArray, HelpText, nil, nil, Required, DefaultValue);
 end;
 
@@ -467,6 +613,12 @@ var
   i: Integer;
 begin
   DefaultValue.ArgType := atArray;
+  // Initialize all fields to avoid potential memory issues
+  DefaultValue.Str := '';
+  DefaultValue.Int := 0;
+  DefaultValue.Flt := 0.0;
+  DefaultValue.Bool := False;
+  
   SetLength(DefaultValue.Arr, Length(DefaultArr));
   for i := 0 to High(DefaultArr) do
     DefaultValue.Arr[i] := DefaultArr[i];
@@ -535,7 +687,7 @@ begin
       Result := FResults[i].Value.Arr;
       Exit;
     end;
-  Result := [];
+  Result := nil;
 end;
 
 end.
