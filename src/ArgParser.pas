@@ -111,6 +111,8 @@ type
     function GetFloat(const LongOpt: string): Double;
     function GetBoolean(const LongOpt: string): Boolean;
     function GetArray(const LongOpt: string): TStringDynArray;
+    procedure Done;
+    class operator Finalize(var r: TArgParser);
   end;
 
 implementation
@@ -688,6 +690,30 @@ begin
       Exit;
     end;
   Result := nil;
+end;
+
+procedure TArgParser.Done;
+var
+  i: Integer;
+begin
+  // Free results
+  for i := 0 to High(FResults) do
+    Finalize(FResults[i].Value);
+  FResults := nil;
+
+  // Free options (strings + DefaultValue’s managed fields)
+  for i := 0 to High(FOptions) do
+    Finalize(FOptions[i]);
+  FOptions := nil;
+
+  FError := '';
+  FUsage := '';
+  FHasError := False;
+end;
+
+class operator TArgParser.Finalize(var r: TArgParser);
+begin
+  r.Done;
 end;
 
 end.
