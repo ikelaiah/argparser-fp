@@ -254,7 +254,13 @@ var
   FoundRequired: Boolean;
   HasValue: Boolean;
   ValueStr: string;
+  EqualPos: Integer;
+  ShortOptStr: string;
 begin
+
+  // Make Finalize(Value) safe even if we exit early on an error.
+  FillChar(Value, 0, SizeOf(Value));
+
   { Step 0: Check for help flag first - special case that exits early }
   for i := Low(Args) to High(Args) do
     if (Args[i] = '-h') or (Args[i] = '--help') then
@@ -280,68 +286,49 @@ begin
     while i <= High(Args) do
     begin
       CurrentOpt := Args[i];
+      ValueStr := '';
+      HasValue := False;
       
-      // Handle combined short option with value (e.g., -fvalue)
-      if (Length(CurrentOpt) > 2) and (CurrentOpt[1] = '-') and (CurrentOpt[2] <> '-') and (FindOption(CurrentOpt) = -1) then
+      { Step 1a: Check for --name=value format }
+      EqualPos := Pos('=', CurrentOpt);
+      if (EqualPos > 0) and (Length(CurrentOpt) > 2) and (CurrentOpt[1] = '-') then
       begin
-        // Extract the option character
-        OptionIdx := -1;
-        // First check if this is a valid short option
-        for j := 0 to High(FOptions) do
-        begin
-          if FOptions[j].ShortOpt = CurrentOpt[2] then
-          begin
-            OptionIdx := j;
-            Break;
-          end;
-        end;
-        
-        // If not a valid short option, report error
+        // Handle both --option=value and -o=value formats
+        ValueStr := Copy(CurrentOpt, EqualPos + 1, Length(CurrentOpt));
+        CurrentOpt := Copy(CurrentOpt, 1, EqualPos - 1);
+        HasValue := True;
+      end
+
+      { Step 1b: Handle combined short option with value (e.g., -fvalue) }
+      else if (Length(CurrentOpt) > 2)
+           and (CurrentOpt[1] = '-')              // starts with '-'
+           and (CurrentOpt[2] <> '-')             // not a long option
+      then
+      begin
+        // Normalize: '-xVALUE' → CurrentOpt='-x', HasValue=True, ValueStr='VALUE'
+        ShortOptStr := Copy(CurrentOpt, 1, 2);      // '-f'
+        OptionIdx := FindOption(ShortOptStr);
         if OptionIdx = -1 then
         begin
-          SetError('Unknown option: ' + CurrentOpt);
+          SetError('Unknown option: ' + ShortOptStr);
           Exit;
         end;
-        
-        // Found a valid short option
-        Value := FOptions[OptionIdx].DefaultValue;
-        ValueStr := Copy(CurrentOpt, 3, Length(CurrentOpt) - 2);
-        
-        // For boolean options, this format is invalid
-        if FOptions[OptionIdx].ArgType = atBoolean then
+
+        ValueStr   := Copy(CurrentOpt, 3, MaxInt);  // 'input.txt' (can be anything)
+        HasValue   := True;
+        CurrentOpt := ShortOptStr;                  // let the general path handle parsing
+        // PowerShell sometimes splits '-finput.txt' into ['-finput', '.txt'].
+        // If the option expects a string and the next token begins with '.', append it.
+        if (i < High(Args))
+           and (FOptions[OptionIdx].ArgType = atString)
+           and (Length(Args[i+1]) > 0)
+           and (Args[i+1][1] = '.') then
         begin
-          SetError('Invalid format for boolean option: ' + CurrentOpt);
-          Exit;
+          ValueStr := ValueStr + Args[i+1];
+          Inc(i);
         end;
-        
-        // For required string options, check if the value is empty
-        if FOptions[OptionIdx].Required and (FOptions[OptionIdx].ArgType = atString) and (ValueStr = '') then
-        begin
-          SetError('Empty value not allowed for required option: ' + CurrentOpt);
-          Exit;
-        end;
-        
-        // Parse the value
-        if not ParseValue(ValueStr, FOptions[OptionIdx].ArgType, Value) then
-        begin
-          SetError('Invalid value for option ' + CurrentOpt);
-          Exit;
-        end;
-        
-        // Execute callbacks if assigned
-        if Assigned(FOptions[OptionIdx].Callback) then
-          FOptions[OptionIdx].Callback(Value);
-        if Assigned(FOptions[OptionIdx].CallbackClass) then
-          FOptions[OptionIdx].CallbackClass(Value);
-        
-        // Store parsed value
-        SetLength(FResults, Length(FResults) + 1);
-        FResults[High(FResults)].Name := FOptions[OptionIdx].LongOpt;
-        FResults[High(FResults)].Value := Value;
-        
-        Inc(i);
-        Continue;
       end;
+
       
       { Step 2a: Validate argument format (must start with '-') }
       if (Length(CurrentOpt) = 0) or (CurrentOpt[1] <> '-') then
@@ -361,25 +348,40 @@ begin
       { Initialize with default value for this option (sets ArgType) }
       Finalize(Value); // Clean up from previous iteration
       Value := FOptions[OptionIdx].DefaultValue;
-      HasValue := False;
       
       { Step 2c: Parse the value based on option type }
-      // For boolean options, just set to true when present
+      // For boolean options, just set to true when present (unless --bool=false)
       if FOptions[OptionIdx].ArgType = atBoolean then
       begin
-        Value.Bool := True;
-        HasValue := True;
-      end
-      // For non-boolean options, check for an attached value (e.g., -fvalue)
-      else if (Length(CurrentOpt) > 2) and (CurrentOpt[2] <> '-') and (FindOption(Copy(CurrentOpt, 1, 2)) <> -1) then
-      begin
-        ValueStr := Copy(CurrentOpt, 3, Length(CurrentOpt));
-        if not ParseValue(ValueStr, FOptions[OptionIdx].ArgType, Value) then
+        if HasValue then
         begin
-          SetError('Invalid value for option ' + Copy(CurrentOpt, 1, 2));
-          Exit;
+          if not ParseValue(ValueStr, atBoolean, Value) then
+          begin
+            SetError('Invalid boolean value for option ' + CurrentOpt);
+            Exit;
+          end;
+        end
+        else
+        begin
+          Value.Bool := True;
         end;
         HasValue := True;
+      end
+      // For non-boolean options with --name=value format, we already have the value
+      else if HasValue then
+      begin
+        // For required string options, check if the value is empty before parsing
+        if FOptions[OptionIdx].Required and (FOptions[OptionIdx].ArgType = atString) and (ValueStr = '') then
+        begin
+          SetError('Empty value not allowed for required option: ' + CurrentOpt);
+          Exit;
+        end;
+        
+        if not ParseValue(ValueStr, FOptions[OptionIdx].ArgType, Value) then
+        begin
+          SetError('Invalid value for option ' + CurrentOpt);
+          Exit;
+        end;
       end
       // For non-boolean options, check if a separate value is provided
       else if (i < High(Args)) and ((Length(Args[i+1]) = 0) or (Args[i+1][1] <> '-')) then
@@ -489,11 +491,18 @@ begin
     Write('  ');
     WriteLn(FOptions[i].HelpText);
   end;
+
+  Done;
 end;
 
 procedure TArgParser.ShowUsage;
 begin
   WriteLn('Usage: ' + FUsage);
+  // Free resources after showing usage to avoid leaks on error paths
+  Done;
+  // Also clear stored strings so heaptrc doesn't report them as leaks
+  FError := '';
+  FUsage := '';
 end;
 
 procedure TArgParser.SetUsage(const AUsage: string);
@@ -505,6 +514,7 @@ procedure TArgParser.SetError(const AError: string);
 begin
   FHasError := True;
   FError := AError;
+  // Do not clean up here so caller can still access Error and then ShowUsage.
 end;
 
 function TArgParser.GetError: string;
@@ -703,10 +713,8 @@ begin
   for i := 0 to High(FOptions) do
     Finalize(FOptions[i]);
   FOptions := nil;
-
-  FError := '';
-  FUsage := '';
-  FHasError := False;
+  // Do NOT clear FError/FUsage/FHasError here.
+  // Leaving them intact allows callers to read Error and ShowUsage after failure.
 end;
 
 class operator TArgParser.Finalize(var r: TArgParser);

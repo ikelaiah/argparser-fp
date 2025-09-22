@@ -6,7 +6,7 @@ A simple, record-based command-line argument parser for Free Pascal (FPC 3.2.2+)
 
 ## 1. Introduction
 
-`ParseArgs` helps you:
+`ArgParser` helps you:
 
 - Define short (`-f`) and long (`--file`) options
 - Parse values: string, integer, float, boolean, or array
@@ -19,13 +19,13 @@ Ideal for small to medium Pascal programs.
 
 ## 2. Installation
 
-1. Copy `ParseArgs.pas` into your project folder.
+1. Copy `ArgParser.pas` into your project folder.
 2. Add to your program’s `uses` clause:
 
    ```pascal
    uses
      SysUtils,
-     ParseArgs;
+     ArgParser;
    ```
 
 3. Compile with FPC:
@@ -44,7 +44,7 @@ var
   FilePath: string;
   Count: Integer;
   Verbose: Boolean;
-  Items: array of string;
+  Items: TStringDynArray;
 begin
   // Initialize or reset parser (clears options, errors, and previous results)
   Parser.Init;
@@ -53,11 +53,11 @@ begin
   Parser.AddInteger('c', 'count', 'Number of items', 5);
   Parser.AddBoolean('v', 'verbose', 'Enable verbose mode');
   Parser.AddArray('l', 'list', 'Comma-separated list');
-  Parser.Parse(ParamStrArray);
+  Parser.ParseCommandLine;
   if Parser.HasError then
   begin
     Writeln('Error: ', Parser.Error);
-    Parser.ShowUsage;
+    Parser.ShowUsage; // Frees internal resources
     Halt(1);
   end;
   FilePath := Parser.GetString('file');
@@ -134,11 +134,11 @@ begin
   Parser.Add('v','verbose', atBoolean, 'Enable verbose', nil, @OnVerbose, False, V);
 
   // Parse and handle errors
-  Parser.Parse(ParamStrArray);
+  Parser.ParseCommandLine;
   if Parser.HasError then
   begin
     Writeln('Error: ', Parser.Error);
-    Parser.ShowUsage;
+    Parser.ShowUsage; // Frees internal resources
     Halt(1);
   end;
 
@@ -155,14 +155,14 @@ program ComplexApp;
 
 uses
   SysUtils,
-  ParseArgs;
+  ArgParser;
 
 var
   Parser: TArgParser;
   InputFile, OutputDir: string;
   Threads: Integer;
   Verbose: Boolean;
-  Tags: TArrayOfString;
+  Tags: TStringDynArray;
   i: Integer;
 begin
   Parser.Init;
@@ -174,12 +174,12 @@ begin
   Parser.AddBoolean('v', 'verbose', 'Verbose logging');
   Parser.AddArray('T', 'tags', 'Filter tags to process');
 
-  Parser.Parse(ParamStrArray);
+  Parser.ParseCommandLine;
 
   if Parser.HasError then
   begin
     Writeln('Error: ', Parser.Error);
-    Parser.ShowUsage;
+    Parser.ShowUsage; // Frees internal resources
     Halt(1);
   end;
 
@@ -221,7 +221,7 @@ TArgValue = record
   Int:     Integer;
   Flt:     Double;
   Bool:    Boolean;
-  Arr:     array of string;
+  Arr:     TStringDynArray;
 end;
 
 TArgCallback      = procedure(const Value: TArgValue);
@@ -245,7 +245,7 @@ TArgParser = record
   procedure AddFloat(const ShortOpt: Char; const LongOpt, HelpText: string; const DefaultValue: Double = 0.0; const Required: Boolean = False);
   procedure AddBoolean(const ShortOpt: Char; const LongOpt, HelpText: string; const DefaultValue: Boolean = False; const Required: Boolean = False);
   procedure AddArray(const ShortOpt: Char; const LongOpt, HelpText: string; const Required: Boolean = False);
-  procedure Parse(const Args: array of string);
+  procedure ParseCommandLine;
   function HasError: Boolean;
   property Error: string read GetError;
   procedure ShowUsage;
@@ -255,7 +255,7 @@ TArgParser = record
   function GetInteger(const LongOpt: string): Integer;
   function GetFloat(const LongOpt: string): Double;
   function GetBoolean(const LongOpt: string): Boolean;
-  function GetArray(const LongOpt: string): array of string;
+  function GetArray(const LongOpt: string): TStringDynArray;
 end;
 ```
 
@@ -275,7 +275,7 @@ classDiagram
     }
     class TArrayOfString {
         <<type>>
-        array of string
+        TStringDynArray
     }
     class TArgValue {
         <<record>>
@@ -316,11 +316,11 @@ classDiagram
         -FOptions: array of TArgOption
         -FResults: array of TParseResult
         -FUsage: string
-        -FErrorMsg: string
+        -FError: string
         +Init()
         +SetUsage(AUsage: string)
         +Add(ShortOpt, LongOpt, ArgType, HelpText, Callback, CallbackClass, Required, DefaultValue)
-        +Parse(Args: array of string)
+        +ParseCommandLine()
         +HasError(): Boolean
         +GetError(): string
         +ShowUsage()
@@ -331,11 +331,6 @@ classDiagram
         +GetFloat(LongOpt: string): Double
         +GetBoolean(LongOpt: string): Boolean
         +GetArray(LongOpt: string): TArrayOfString
-        +AddString(ShortOpt, LongOpt, HelpText, DefaultValue, Required)
-        +AddInteger(ShortOpt, LongOpt, HelpText, DefaultValue, Required)
-        +AddFloat(ShortOpt, LongOpt, HelpText, DefaultValue, Required)
-        +AddBoolean(ShortOpt, LongOpt, HelpText, DefaultValue, Required)
-        +AddArray(ShortOpt, LongOpt, HelpText, Required)
     }
     TArgParser o-- "*" TArgOption : contains
     TArgParser o-- "*" TParseResult : stores
@@ -351,5 +346,8 @@ classDiagram
 - For boolean flags, presence ⇒ `True`.
 - Set `Required := True` to enforce mandatory options.
 - Choose method callbacks (`CallbackClass`) when updating object state.
+- Attached short options without spaces are supported: `-finput.txt`, `-c42`.
+- PowerShell compatibility: if the shell splits `-finput.txt` as `-finput` and `.txt`, the parser reattaches `.txt` to the value.
+- On error, print `Parser.Error`, call `Parser.ShowUsage`, then exit. No manual cleanup is needed.
 
 Happy Free Pascal coding!

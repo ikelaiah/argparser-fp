@@ -5,8 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.0] - 2025-09-22
 
-## [1.0.0] - 2025-09-19
+### Fixed
+
+- Short option with inline value now works reliably across shells:
+  - Handles `-finput.txt` and cases where PowerShell splits it into `-finput` and `.txt`.
+- No memory leaks on error paths:
+  - `ShowUsage` frees internal resources (and clears stored strings) so examples that print error + usage and exit have 0 unfreed blocks.
+  - `ShowHelp` continues to free internal resources after printing full help.
+
+### Changed
+
+- `SetError` no longer frees resources automatically; this preserves the error message so callers can print it before calling `ShowUsage`.
+- Documentation updated to reflect the above behavior and the recommended error-handling pattern.
+
+
+## [0.9.0] - 2025-09-19
 
 First release as an independent package, previously was part of TidyKit.
 

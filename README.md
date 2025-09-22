@@ -22,6 +22,7 @@ A lightweight, record-based command-line argument parser for Free Pascal. `ArgPa
 - **Default Values:** Provide default values for optional arguments.
 - **Zero Dependencies:** Uses only standard Free Pascal RTL units.
 
+
 ## 🚀 Quick Start
 
 Here is a complete example of a simple application:

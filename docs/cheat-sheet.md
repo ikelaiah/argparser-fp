@@ -28,18 +28,21 @@ begin
   Parser.AddBoolean('v', 'verbose', 'Enable verbose output');
 
   // 3. Parse arguments
-  Parser.Parse(ParamStrArray);
+  Parser.ParseCommandLine;
 
   // 4. Handle errors or help
   if Parser.HasError then
   begin
     WriteLn('Error: ', Parser.Error);
-    Parser.ShowUsage;
+    Parser.ShowUsage; // Frees internal resources
     Halt(1);
   end;
 
   if Parser.GetBoolean('help') then
-    Parser.ShowHelp; // Exits automatically
+  begin
+    Parser.ShowHelp; // Frees internal resources
+    Halt(0);
+  end;
 
   // 5. Access parsed values
   InputFile := Parser.GetString('input');
@@ -78,6 +81,7 @@ ArgParser supports multiple flexible formats for specifying arguments:
 # Attached format (no space)
 -finput.txt
 -c42
+# PowerShell compatibility: handles cases where it splits as `-finput` and `.txt`
 ```
 
 ### Boolean Options
@@ -173,8 +177,8 @@ Parser.AddArray('I', 'include', 'Include paths', ['/usr/lib', '/lib']);
 Parse the command-line arguments after all options are defined.
 
 ```pascal
-// Use FPC's ParamStrArray helper function
-Parser.Parse(ParamStrArray);
+// Parse directly from ParamStr
+Parser.ParseCommandLine;
 ```
 
 ### 4. Accessing Values
@@ -186,7 +190,7 @@ var
   Port: Integer;
   OutputFile: string;
   IsVerbose: Boolean;
-  IncludePaths: TArrayOfString;
+  IncludePaths: TStringDynArray;
 begin
   OutputFile := Parser.GetString('output');
   Port := Parser.GetInteger('port');
@@ -207,6 +211,7 @@ After parsing, check the `HasError` property. If it's `True`, you can retrieve t
 if Parser.HasError then
 begin
   WriteLn(ErrOutput, 'Error: ', Parser.Error);
+  Parser.ShowUsage; // Frees internal resources
   Halt(1);
 end;
 ```
@@ -217,7 +222,7 @@ The library can automatically generate and display help text based on your defin
 
 **Show Full Help (`--help`)**
 
-The `ShowHelp` procedure displays the complete, formatted help message and then exits the program. It's typically triggered by a dedicated `--help` flag.
+The `ShowHelp` procedure displays the complete, formatted help message and frees resources. You should exit the program after showing help.
 
 ```pascal
 // Define a help flag (usually done with other options)
@@ -225,7 +230,10 @@ Parser.AddBoolean('h', 'help', 'Show this help message');
 
 // After parsing, check if the flag was used
 if Parser.GetBoolean('help') then
-  Parser.ShowHelp; // Displays help and exits
+begin
+  Parser.ShowHelp; // Displays help and frees resources
+  Halt(0);
+end;
 ```
 
 **Show Compact Usage**
@@ -236,7 +244,7 @@ The `ShowUsage` procedure displays only the compact, one-line usage banner. This
 if Parser.HasError then
 begin
   WriteLn(ErrOutput, 'Error: ', Parser.Error);
-  Parser.ShowUsage; // e.g., "Usage: myapp [options] <input-file>"
+  Parser.ShowUsage; // e.g., "Usage: myapp [options] <input-file>" and frees resources
   Halt(1);
 end;
 ```
