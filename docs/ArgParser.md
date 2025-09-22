@@ -366,6 +366,40 @@ classDiagram
   - After parsing all args, any option marked `Required=True` must appear at least once; otherwise, parsing fails with an error.
   - For required string options, an empty value is rejected.
 
+### Token array shape (what Parse receives)
+
+`Parse(const Args: TStringDynArray)` expects a whitespace-delimited token array equivalent to `ParamStr(1..ParamCount)`. Each element is one token (switch or value).
+
+- Example A
+
+  Command:
+
+  ```text
+  myapp --name=alice -n42 --ratio 0.75 --items=a,b,c
+  ```
+
+  Args array:
+
+  ```pascal
+  ["--name=alice", "-n42", "--ratio", "0.75", "--items=a,b,c"]
+  ```
+
+- Example B (PowerShell split quirk for short string values)
+
+  Command:
+
+  ```text
+  myapp -ooutput .txt
+  ```
+
+  Args array:
+
+  ```pascal
+  ["-ooutput", ".txt"]
+  ```
+
+  Interpretation: if `-o/--output` is a string option, the parser reattaches the following token when it starts with `.` → value becomes `output.txt`.
+
 - **Unknowns and invalid formats**
   - Any token not starting with `-` is an error: `Invalid argument format: <token>`.
   - Any switch not matching a defined short/long option is an error: `Unknown option: <opt>`.
@@ -414,5 +448,26 @@ myapp --verbose=false
 - Attached short options without spaces are supported: `-finput.txt`, `-c42`.
 - PowerShell compatibility: if the shell splits `-finput.txt` as `-finput` and `.txt`, the parser reattaches `.txt` to the value.
 - On error, print `Parser.Error`, call `Parser.ShowUsage`, then exit. No manual cleanup is needed.
+
+### Common pitfalls
+
+- Tokens not starting with `-` must be values for the preceding option
+  - Standalone tokens like `input.txt` (not following an option expecting a value) cause `Invalid argument format: input.txt`.
+
+- Boolean flags do not consume the next token as a value
+  - Use `--flag=true` or `--flag=false` (or `-f=false`).
+  - Writing `--flag false` will treat `false` as a separate token and fail.
+
+- Required string options reject empty values
+  - `--name=` is invalid if `name` is required.
+
+- Short option chaining is not supported
+  - `-abc` is interpreted as option `-a` with value `bc`, not three flags. Define and pass short options separately (e.g., `-a -b -c`) or use long options.
+
+- PowerShell may split short string values (file extensions)
+  - `-finput .txt` becomes two tokens; the parser reattaches `.txt` for string options to form `input.txt`.
+
+- Arrays are comma-separated in a single token
+  - Prefer `--list=a,b,c`. If you need spaces inside values, quote the entire argument per your shell rules.
 
 Happy Free Pascal coding!

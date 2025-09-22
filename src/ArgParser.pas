@@ -485,6 +485,52 @@ begin
   end;
 end;
 
+{-------------------------------------------------------------------------------
+  Parse
+
+  High-level flow for parsing the provided Args array:
+
+  Step 0: Early help check
+    - If '-h' or '--help' is anywhere in Args, we immediately print help and exit
+      without attempting to parse anything else.
+
+  Step 1: Reset/clear state for a fresh run
+    - ResetParseState clears any previous error flag/message.
+    - ClearPreviousResults frees previously parsed results so we start clean.
+
+  Step 2: Iterate arguments one token at a time
+    - For each token, we first normalize it using NormalizeToken(). This produces:
+        OptName  -> standardized switch form ('-x' or '--long')
+        HasValue -> whether a value accompanied the switch
+        ValueStr -> inline value text (e.g., '--name=value', '-n=value', '-nvalue')
+      NormalizeToken also performs small conveniences like the PowerShell '.'-prefix
+      quirk for atString combined short options.
+
+  Step 3: Validate the option exists
+    - We map OptName to an index in FOptions. If not found, we set an error and exit.
+
+  Step 4: Seed the value with defaults and parse the typed value
+    - Start from the option's DefaultValue (which also establishes the ArgType).
+    - ParseOptionValue() then:
+        * For booleans: the presence of the flag implies True, unless an explicit
+          boolean value is provided (e.g., '--flag=false').
+        * For non-booleans: if the value was not inline, it may consume the next
+          token if it is not another option. Type conversion and required/empty
+          checks are enforced here.
+
+  Step 5: Emit callbacks and record the result
+    - RunCallbacks() invokes any registered procedure/call-method callbacks.
+    - AppendResult() stores the (LongOptName, ParsedValue) pair in FResults.
+
+  Step 6: After all tokens, verify all required options were provided
+    - CheckRequiredOptionsPresent() scans FOptions vs. FResults and reports the
+      first missing required option, if any.
+
+  Notes on error handling and resource safety:
+    - On any error, SetError() is called and we exit Parse() early.
+    - The local TArgValue variable is finalized in the finally block to avoid
+      leaks even when exiting early.
+-------------------------------------------------------------------------------}
 procedure TArgParser.Parse(const Args: TStringDynArray);
 var
   i: Integer;
@@ -494,30 +540,31 @@ var
   HasValue: Boolean;
   ValueStr: string;
 begin
-  // Make Finalize(Value) safe even if we exit early on an error.
+  // Ensure local Value is in a safe state so Finalize(Value) is always valid.
   FillChar(Value, 0, SizeOf(Value));
 
-  // Early help handling
+  // Step 0: Early help handling (bypass normal parsing)
   if IsHelpRequested(Args) then
   begin
     ShowHelp;
     Exit;
   end;
 
-  // Initialize parser state and clear old results
+  // Step 1: Prepare a clean parse state
   ResetParseState;
   ClearPreviousResults;
 
   Initialize(Value);
   try
+    // Step 2: Walk through the arguments left-to-right
     i := Low(Args);
     while i <= High(Args) do
     begin
-      // 1) Normalize current token -> OptName, HasValue, ValueStr
+      // 2.1 Normalize the current token -> OptName, HasValue, ValueStr
       if not NormalizeToken(Args, i, OptName, HasValue, ValueStr) then
-        Exit;
+        Exit; // SetError was already called inside NormalizeToken
 
-      // 2) Validate option exists
+      // Step 3: Match the option definition
       OptionIdx := FindOption(OptName);
       if OptionIdx = -1 then
       begin
@@ -525,25 +572,27 @@ begin
         Exit;
       end;
 
-      // 3) Initialize with the option's default value (establishes ArgType)
-      Finalize(Value);
-      Value := FOptions[OptionIdx].DefaultValue;
+      // Step 4: Start from defaults and parse the typed value
+      Finalize(Value); // discard any previous content
+      Value := FOptions[OptionIdx].DefaultValue; // also conveys the intended ArgType
 
-      // 4) Parse typed value and optionally consume next token when appropriate
+      // 4.1 Parse the value and (for non-boolean) optionally consume the next arg
       if not ParseOptionValue(OptionIdx, HasValue, ValueStr, Args, i, Value, OptName) then
-        Exit;
+        Exit; // SetError was already called inside ParseOptionValue
 
-      // 5) Execute callbacks and store result
+      // Step 5: Fire callbacks and store the result
       RunCallbacks(OptionIdx, Value);
       AppendResult(OptionIdx, Value);
 
+      // Advance to the next argument token
       Inc(i);
     end;
 
-    // 6) Final validation for missing required options
+    // Step 6: Ensure all required options were provided
     if not CheckRequiredOptionsPresent then
-      Exit;
+      Exit; // Error message already set
   finally
+    // Always finalize the local Value to release managed fields
     Finalize(Value);
   end;
 end;

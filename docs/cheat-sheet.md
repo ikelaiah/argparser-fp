@@ -102,6 +102,21 @@ You can mix different formats in the same command:
 mytool --input=data.txt -v --count 100 --output=result.txt
 ```
 
+### Examples: tokens and Args arrays
+
+What `Parse(const Args: TStringDynArray)` receives (conceptually `ParamStr(1..ParamCount)`):
+
+```text
+Command: mytool --file=input.txt -v
+Args    = ["--file=input.txt", "-v"]
+
+Command: mytool --count 10 -o result.txt
+Args    = ["--count", "10", "-o", "result.txt"]
+
+Command: mytool -finput .txt  # PowerShell may split short string values
+Args    = ["-finput", ".txt"]  # parser reattaches → value "input.txt"
+```
+
 ## ⚙️ API Quick Reference
 
 ### 1. Initialization
