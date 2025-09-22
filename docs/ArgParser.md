@@ -340,7 +340,72 @@ classDiagram
 
 ---
 
-## 9. Tips & Best Practices
+## 9. Parsing rules and behavior
+
+- **Help detection**
+  - `-h` or `--help` anywhere in the args triggers `ShowHelp` and exits parsing immediately.
+
+- **Accepted option forms**
+  - Long option with inline value: `--name=value`
+  - Long option with next token value: `--name value`
+  - Short option with inline value: `-n=value`
+  - Short option with concatenated value: `-nvalue`
+  - Short option with next token value: `-n value`
+
+- **Boolean options**
+  - Presence of a boolean option sets it to `True` (e.g., `--verbose` → true).
+  - Inline values are accepted: `--verbose=true`, `--verbose=false`, `-v=false`.
+  - If a boolean is present without a value, it becomes `True`.
+
+- **String/number/array options**
+  - If provided with `=value` or concatenated (e.g., `-fvalue`), that value is used.
+  - Otherwise, if the next token does not start with `-`, it is taken as the value.
+  - Arrays are parsed from a comma-separated string, whitespace-trimmed, empty parts ignored: `--list=a, b, c` → `["a","b","c"]`.
+
+- **Required options**
+  - After parsing all args, any option marked `Required=True` must appear at least once; otherwise, parsing fails with an error.
+  - For required string options, an empty value is rejected.
+
+- **Unknowns and invalid formats**
+  - Any token not starting with `-` is an error: `Invalid argument format: <token>`.
+  - Any switch not matching a defined short/long option is an error: `Unknown option: <opt>`.
+  - Type conversion failures produce `Invalid value for option <opt>` or for booleans `Invalid boolean value for option <opt>`.
+
+- **PowerShell compatibility**
+  - Some shells (notably PowerShell) can split concatenated short string values such as `-finput.txt` into two tokens: `-finput` and `.txt`.
+  - The parser detects this for string options and reattaches the following token if it begins with `.`. Example:
+    - Input tokens: `-finput` `.txt` → parsed as `-f` with value `input.txt`.
+
+- **Defaults and multiple occurrences**
+  - If an option is not provided, its `DefaultValue` is used.
+  - Options can appear multiple times; retrieval helpers like `GetString('name')` return the last provided value (most recent occurrence wins).
+
+### Examples
+
+```text
+# Long with inline value
+myapp --file=input.txt.gz
+
+# Long with next token value
+myapp --file input.txt.gz
+
+# Short concatenated value
+myapp -finput.txt.gz
+
+# Short with next token value
+myapp -f input.txt.gz
+
+# Short combined boolean count with value
+myapp -c2
+
+# Boolean presence implies true
+myapp --verbose
+
+# Boolean with explicit false
+myapp --verbose=false
+```
+
+## 10. Tips & Best Practices
 
 - Always initialize the `DefaultValue` record before `Add`.
 - For boolean flags, presence ⇒ `True`.

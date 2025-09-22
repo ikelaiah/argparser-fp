@@ -77,6 +77,23 @@ type
     procedure SetError(const AError: string);
     { Retrieve the current error message. }
     function GetError: string;
+    { Helpers to make Parse more readable }
+    { Returns True if any arg equals '-h' or '--help' }
+    function IsHelpRequested(const Args: TStringDynArray): Boolean;
+    { Clears error flags/messages before a new Parse run }
+    procedure ResetParseState;
+    { Finalizes and clears FResults from any previous Parse run }
+    procedure ClearPreviousResults;
+    { Normalizes current token into (OptName, HasValue, ValueStr); supports --name=value, -n=value, -nvalue and the PowerShell split quirk }
+    function NormalizeToken(const Args: TStringDynArray; var i: Integer; out OptName: string; out HasValue: Boolean; out ValueStr: string): Boolean;
+    { Populates typed Value for the option; may consume next token; enforces required/empty rules and type parsing }
+    function ParseOptionValue(const OptionIdx: Integer; var HasValue: Boolean; var ValueStr: string; const Args: TStringDynArray; var i: Integer; var Value: TArgValue; const CurrentOpt: string): Boolean;
+    { Invokes any registered callbacks for this option }
+    procedure RunCallbacks(const OptionIdx: Integer; const Value: TArgValue);
+    { Appends the parsed (Name, Value) pair to FResults }
+    procedure AppendResult(const OptionIdx: Integer; const Value: TArgValue);
+    { Ensures all options marked Required=True were provided at least once }
+    function CheckRequiredOptionsPresent: Boolean;
     { Parse the provided command-line arguments array. }
     procedure Parse(const Args: TStringDynArray);
   public
@@ -246,211 +263,287 @@ begin
   end;
 end;
 
-procedure TArgParser.Parse(const Args: TStringDynArray); 
+function TArgParser.IsHelpRequested(const Args: TStringDynArray): Boolean;
 var
-  i, j, OptionIdx: Integer;
+  k: Integer;
+begin
+  { Quick scan for help flags. If found, Parse() will ShowHelp and exit early. }
+  Result := False;
+  for k := Low(Args) to High(Args) do
+    if (Args[k] = '-h') or (Args[k] = '--help') then
+    begin
+      Result := True;
+      Exit;
+    end;
+end;
+
+procedure TArgParser.ResetParseState;
+begin
+  { Clear error status and message. Called at the beginning of Parse(). }
+  FHasError := False;
+  FError := '';
+end;
+
+procedure TArgParser.ClearPreviousResults;
+var
+  k: Integer;
+begin
+  { Finalize any previously stored results to avoid memory leaks across runs. }
+  for k := 0 to High(FResults) do
+    Finalize(FResults[k].Value);
+  SetLength(FResults, 0);
+end;
+
+function TArgParser.NormalizeToken(const Args: TStringDynArray; var i: Integer; out OptName: string; out HasValue: Boolean; out ValueStr: string): Boolean;
+var
   CurrentOpt: string;
-  Value: TArgValue;
-  FoundRequired: Boolean;
-  HasValue: Boolean;
-  ValueStr: string;
   EqualPos: Integer;
   ShortOptStr: string;
+  OptionIdx: Integer;
 begin
+  { Normalize the current argument token into a consistent shape:
+    - OptName: '-x' or '--long'
+    - HasValue/ValueStr: inline value if present (e.g., --name=value, -n=value, -nvalue)
 
+    It also validates that the token starts with '-'.
+    Special handling: combined short option with concatenated value ('-finput.txt')
+    and the PowerShell split quirk where the next token starting with '.' is appended
+    for string options.
+  }
+  Result := False;
+  CurrentOpt := Args[i];
+  OptName := CurrentOpt;
+  ValueStr := '';
+  HasValue := False;
+
+  // Handle --name=value and -o=value
+  EqualPos := Pos('=', CurrentOpt);
+  if (EqualPos > 0) and (Length(CurrentOpt) > 2) and (CurrentOpt[1] = '-') then
+  begin
+    ValueStr := Copy(CurrentOpt, EqualPos + 1, Length(CurrentOpt));
+    OptName := Copy(CurrentOpt, 1, EqualPos - 1);
+    HasValue := True;
+    Result := True;
+    Exit;
+  end
+  // Handle combined short option with value (e.g. -fvalue)
+  else if (Length(CurrentOpt) > 2)
+       and (CurrentOpt[1] = '-')
+       and (CurrentOpt[2] <> '-') then
+  begin
+    ShortOptStr := Copy(CurrentOpt, 1, 2); // '-f'
+    OptionIdx := FindOption(ShortOptStr);
+    if OptionIdx = -1 then
+    begin
+      SetError('Unknown option: ' + ShortOptStr);
+      Exit;
+    end;
+
+    ValueStr := Copy(CurrentOpt, 3, MaxInt);
+    HasValue := True;
+    OptName := ShortOptStr;
+    // PowerShell quirk: append next token starting with '.' for string options
+    if (i < High(Args))
+       and (FOptions[OptionIdx].ArgType = atString)
+       and (Length(Args[i+1]) > 0)
+       and (Args[i+1][1] = '.') then
+    begin
+      ValueStr := ValueStr + Args[i+1];
+      Inc(i);
+    end;
+    Result := True;
+    Exit;
+  end;
+
+  // Validate starts with '-'
+  if (Length(CurrentOpt) = 0) or (CurrentOpt[1] <> '-') then
+  begin
+    SetError('Invalid argument format: ' + CurrentOpt);
+    Exit;
+  end;
+
+  // No normalization needed; return as-is
+  OptName := CurrentOpt;
+  Result := True;
+end;
+
+function TArgParser.ParseOptionValue(const OptionIdx: Integer; var HasValue: Boolean; var ValueStr: string; const Args: TStringDynArray; var i: Integer; var Value: TArgValue; const CurrentOpt: string): Boolean;
+begin
+  { Based on option type and HasValue/ValueStr, populate Value.
+    - Booleans: presence implies True unless an explicit value is provided.
+    - Non-booleans: use inline value if present; otherwise consume next token if it isn't an option.
+    - Required string options: reject empty values.
+    - Perform type conversion using ParseValue and surface clear errors.
+  }
+  Result := False;
+
+  // Boolean options: present means true unless explicit value provided
+  if FOptions[OptionIdx].ArgType = atBoolean then
+  begin
+    if HasValue then
+    begin
+      if not ParseValue(ValueStr, atBoolean, Value) then
+      begin
+        SetError('Invalid boolean value for option ' + CurrentOpt);
+        Exit;
+      end;
+    end
+    else
+    begin
+      Value.Bool := True;
+    end;
+    HasValue := True;
+    Result := True;
+    Exit;
+  end;
+
+  // Non-boolean options
+  if HasValue then
+  begin
+    if FOptions[OptionIdx].Required and (FOptions[OptionIdx].ArgType = atString) and (ValueStr = '') then
+    begin
+      SetError('Empty value not allowed for required option: ' + CurrentOpt);
+      Exit;
+    end;
+    if not ParseValue(ValueStr, FOptions[OptionIdx].ArgType, Value) then
+    begin
+      SetError('Invalid value for option ' + CurrentOpt);
+      Exit;
+    end;
+  end
+  else if (i < High(Args)) and ((Length(Args[i+1]) = 0) or (Args[i+1][1] <> '-')) then
+  begin
+    ValueStr := Args[i+1];
+    if FOptions[OptionIdx].Required and (FOptions[OptionIdx].ArgType = atString) and (ValueStr = '') then
+    begin
+      SetError('Empty value not allowed for required option: ' + CurrentOpt);
+      Exit;
+    end;
+    if not ParseValue(ValueStr, FOptions[OptionIdx].ArgType, Value) then
+    begin
+      SetError('Invalid value for option ' + CurrentOpt);
+      Exit;
+    end;
+    HasValue := True;
+    Inc(i);
+  end;
+
+  // Required non-boolean missing value
+  if FOptions[OptionIdx].Required and (FOptions[OptionIdx].ArgType <> atBoolean) and not HasValue then
+  begin
+    SetError('Missing value for required option: ' + CurrentOpt);
+    Exit;
+  end;
+
+  Result := True;
+end;
+
+procedure TArgParser.RunCallbacks(const OptionIdx: Integer; const Value: TArgValue);
+begin
+  { Invoke any registered callbacks for this option. }
+  if Assigned(FOptions[OptionIdx].Callback) then
+    FOptions[OptionIdx].Callback(Value);
+  if Assigned(FOptions[OptionIdx].CallbackClass) then
+    FOptions[OptionIdx].CallbackClass(Value);
+end;
+
+procedure TArgParser.AppendResult(const OptionIdx: Integer; const Value: TArgValue);
+begin
+  { Append the parsed result (name = long option name) to FResults. }
+  SetLength(FResults, Length(FResults) + 1);
+  FResults[High(FResults)].Name := FOptions[OptionIdx].LongOpt;
+  FResults[High(FResults)].Value := Value;
+end;
+
+function TArgParser.CheckRequiredOptionsPresent: Boolean;
+var
+  j, k: Integer;
+  FoundRequired: Boolean;
+begin
+  { After all args are processed, verify each Required option was provided. }
+  Result := True;
+  for j := 0 to High(FOptions) do
+  begin
+    if FOptions[j].Required then
+    begin
+      FoundRequired := False;
+      for k := 0 to High(FResults) do
+      begin
+        if FResults[k].Name = FOptions[j].LongOpt then
+        begin
+          FoundRequired := True;
+          Break;
+        end;
+      end;
+      if not FoundRequired then
+      begin
+        SetError('Missing required option: --' + FOptions[j].LongOpt);
+        Result := False;
+        Exit;
+      end;
+    end;
+  end;
+end;
+
+procedure TArgParser.Parse(const Args: TStringDynArray);
+var
+  i: Integer;
+  OptionIdx: Integer;
+  OptName: string;
+  Value: TArgValue;
+  HasValue: Boolean;
+  ValueStr: string;
+begin
   // Make Finalize(Value) safe even if we exit early on an error.
   FillChar(Value, 0, SizeOf(Value));
 
-  { Step 0: Check for help flag first - special case that exits early }
-  for i := Low(Args) to High(Args) do
-    if (Args[i] = '-h') or (Args[i] = '--help') then
-    begin
-      ShowHelp;
-      Exit;
-    end;
-  
-  { Initialize parser state }
-  FHasError := False;
-  FError := '';
+  // Early help handling
+  if IsHelpRequested(Args) then
+  begin
+    ShowHelp;
+    Exit;
+  end;
 
-  // Clear previous results to avoid memory leaks from prior runs
-  for i := 0 to High(FResults) do
-    Finalize(FResults[i].Value);
-  SetLength(FResults, 0);
+  // Initialize parser state and clear old results
+  ResetParseState;
+  ClearPreviousResults;
 
-  Initialize(Value); // Ensure Value is initialized before the loop
-
+  Initialize(Value);
   try
-    { Step 1: Process command-line arguments }
     i := Low(Args);
     while i <= High(Args) do
     begin
-      CurrentOpt := Args[i];
-      ValueStr := '';
-      HasValue := False;
-      
-      { Step 1a: Check for --name=value format }
-      EqualPos := Pos('=', CurrentOpt);
-      if (EqualPos > 0) and (Length(CurrentOpt) > 2) and (CurrentOpt[1] = '-') then
-      begin
-        // Handle both --option=value and -o=value formats
-        ValueStr := Copy(CurrentOpt, EqualPos + 1, Length(CurrentOpt));
-        CurrentOpt := Copy(CurrentOpt, 1, EqualPos - 1);
-        HasValue := True;
-      end
-
-      { Step 1b: Handle combined short option with value (e.g., -fvalue) }
-      else if (Length(CurrentOpt) > 2)
-           and (CurrentOpt[1] = '-')              // starts with '-'
-           and (CurrentOpt[2] <> '-')             // not a long option
-      then
-      begin
-        // Normalize: '-xVALUE' → CurrentOpt='-x', HasValue=True, ValueStr='VALUE'
-        ShortOptStr := Copy(CurrentOpt, 1, 2);      // '-f'
-        OptionIdx := FindOption(ShortOptStr);
-        if OptionIdx = -1 then
-        begin
-          SetError('Unknown option: ' + ShortOptStr);
-          Exit;
-        end;
-
-        ValueStr   := Copy(CurrentOpt, 3, MaxInt);  // 'input.txt' (can be anything)
-        HasValue   := True;
-        CurrentOpt := ShortOptStr;                  // let the general path handle parsing
-        // PowerShell sometimes splits '-finput.txt' into ['-finput', '.txt'].
-        // If the option expects a string and the next token begins with '.', append it.
-        if (i < High(Args))
-           and (FOptions[OptionIdx].ArgType = atString)
-           and (Length(Args[i+1]) > 0)
-           and (Args[i+1][1] = '.') then
-        begin
-          ValueStr := ValueStr + Args[i+1];
-          Inc(i);
-        end;
-      end;
-
-      
-      { Step 2a: Validate argument format (must start with '-') }
-      if (Length(CurrentOpt) = 0) or (CurrentOpt[1] <> '-') then
-      begin
-        SetError('Invalid argument format: ' + CurrentOpt);
+      // 1) Normalize current token -> OptName, HasValue, ValueStr
+      if not NormalizeToken(Args, i, OptName, HasValue, ValueStr) then
         Exit;
-      end;
-      
-      { Step 2b: Validate option exists in defined options }
-      OptionIdx := FindOption(CurrentOpt);
+
+      // 2) Validate option exists
+      OptionIdx := FindOption(OptName);
       if OptionIdx = -1 then
       begin
-        SetError('Unknown option: ' + CurrentOpt);
+        SetError('Unknown option: ' + OptName);
         Exit;
       end;
-      
-      { Initialize with default value for this option (sets ArgType) }
-      Finalize(Value); // Clean up from previous iteration
+
+      // 3) Initialize with the option's default value (establishes ArgType)
+      Finalize(Value);
       Value := FOptions[OptionIdx].DefaultValue;
-      
-      { Step 2c: Parse the value based on option type }
-      // For boolean options, just set to true when present (unless --bool=false)
-      if FOptions[OptionIdx].ArgType = atBoolean then
-      begin
-        if HasValue then
-        begin
-          if not ParseValue(ValueStr, atBoolean, Value) then
-          begin
-            SetError('Invalid boolean value for option ' + CurrentOpt);
-            Exit;
-          end;
-        end
-        else
-        begin
-          Value.Bool := True;
-        end;
-        HasValue := True;
-      end
-      // For non-boolean options with --name=value format, we already have the value
-      else if HasValue then
-      begin
-        // For required string options, check if the value is empty before parsing
-        if FOptions[OptionIdx].Required and (FOptions[OptionIdx].ArgType = atString) and (ValueStr = '') then
-        begin
-          SetError('Empty value not allowed for required option: ' + CurrentOpt);
-          Exit;
-        end;
-        
-        if not ParseValue(ValueStr, FOptions[OptionIdx].ArgType, Value) then
-        begin
-          SetError('Invalid value for option ' + CurrentOpt);
-          Exit;
-        end;
-      end
-      // For non-boolean options, check if a separate value is provided
-      else if (i < High(Args)) and ((Length(Args[i+1]) = 0) or (Args[i+1][1] <> '-')) then
-      begin
-        ValueStr := Args[i+1];
-        
-        // For required string options, check if the value is empty before parsing
-        if FOptions[OptionIdx].Required and (FOptions[OptionIdx].ArgType = atString) and (ValueStr = '') then
-        begin
-          SetError('Empty value not allowed for required option: ' + CurrentOpt);
-          Exit;
-        end;
-        
-        { Step 2d: Validate the value can be parsed to the expected type }
-        if not ParseValue(ValueStr, FOptions[OptionIdx].ArgType, Value) then
-        begin
-          SetError('Invalid value for option ' + CurrentOpt);
-          Exit;
-        end;
-        
-        HasValue := True;
-        Inc(i); { Skip the value }
-      end;
-      
-      // Check if a required non-boolean option is missing its value
-      if FOptions[OptionIdx].Required and (FOptions[OptionIdx].ArgType <> atBoolean) and not HasValue then
-      begin
-        SetError('Missing value for required option: ' + CurrentOpt);
+
+      // 4) Parse typed value and optionally consume next token when appropriate
+      if not ParseOptionValue(OptionIdx, HasValue, ValueStr, Args, i, Value, OptName) then
         Exit;
-      end;
-      
-      { Step 5: Execute callbacks if assigned }
-      if Assigned(FOptions[OptionIdx].Callback) then
-        FOptions[OptionIdx].Callback(Value);
-      if Assigned(FOptions[OptionIdx].CallbackClass) then
-        FOptions[OptionIdx].CallbackClass(Value);
-      
-      { Step 3: Store parsed value in FResults }
-      SetLength(FResults, Length(FResults) + 1);
-      FResults[High(FResults)].Name := FOptions[OptionIdx].LongOpt;
-      FResults[High(FResults)].Value := Value;
-      
+
+      // 5) Execute callbacks and store result
+      RunCallbacks(OptionIdx, Value);
+      AppendResult(OptionIdx, Value);
+
       Inc(i);
     end;
-    
-    { Step 4: Check for missing required options }
-    for j := 0 to High(FOptions) do
-    begin
-      if FOptions[j].Required then
-      begin
-        FoundRequired := False;
-        for i := 0 to High(FResults) do
-        begin
-          if FResults[i].Name = FOptions[j].LongOpt then
-          begin
-            FoundRequired := True;
-            Break;
-          end;
-        end;
-        
-        if not FoundRequired then
-        begin
-          SetError('Missing required option: --' + FOptions[j].LongOpt);
-          Exit;
-        end;
-      end;
-    end;
+
+    // 6) Final validation for missing required options
+    if not CheckRequiredOptionsPresent then
+      Exit;
   finally
-    // Finalize the local Value record to free memory if an error occurred
     Finalize(Value);
   end;
 end;
