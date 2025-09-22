@@ -58,7 +58,7 @@ begin
   begin
     Writeln('Error: ', Parser.Error);
     Parser.ShowUsage; // Frees internal resources
-    Halt(1);
+    Exit;
   end;
   FilePath := Parser.GetString('file');
   Count := Parser.GetInteger('count');
@@ -139,7 +139,7 @@ begin
   begin
     Writeln('Error: ', Parser.Error);
     Parser.ShowUsage; // Frees internal resources
-    Halt(1);
+    Exit;
   end;
 
   Writeln('Done.');

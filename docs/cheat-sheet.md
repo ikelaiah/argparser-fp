@@ -8,7 +8,7 @@ Here's a full example demonstrating the basic workflow: initialize, define, pars
 
 ```pascal
 // File: examples/SimpleTool/SimpleTool.pas
-program MyTool;
+program SimpleTool;
 
 uses
   ArgParser;
@@ -35,13 +35,13 @@ begin
   begin
     WriteLn('Error: ', Parser.Error);
     Parser.ShowUsage; // Frees internal resources
-    Halt(1);
+    Exit;
   end;
 
   if Parser.GetBoolean('help') then
   begin
     Parser.ShowHelp; // Frees internal resources
-    Halt(0);
+    Exit;
   end;
 
   // 5. Access parsed values

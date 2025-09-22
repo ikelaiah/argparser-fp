@@ -17,9 +17,8 @@ begin
   Parser.AddInteger('c', 'count', 'Set count value', 5);
   Parser.AddBoolean('v', 'verbose', 'Enable verbose mode');
   Parser.AddString('f', 'file', 'Specify a file path', '', True); // Required
-  Parser.AddArray('t', 'tags', 'Comma-separated list of tags'); // Add array option
+  Parser.AddArray('t', 'tags', 'Comma-separated list of tags');   // Add array option
   Parser.AddBoolean('h', 'help', 'Show this help message');
-
 
   // Parse command line arguments with one call
   Parser.ParseCommandLine;
@@ -28,15 +27,14 @@ begin
   begin
     Writeln('Error: ', Parser.Error);
     Parser.ShowUsage;
-    Halt(1);
+    Exit;
   end;
-
 
   // Show help if requested
   if Parser.GetBoolean('help') then
   begin
     Parser.ShowHelp;
-    Halt(0);
+    Exit;
   end;
 
   // Access parsed values
