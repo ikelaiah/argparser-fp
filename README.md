@@ -125,6 +125,26 @@ $ ./MyApp --file=input.txt --count=10 --verbose=true
 $ ./MyApp --file=input.txt -c 10 --verbose
 ```
 
+## ⚠️ Common Pitfalls
+
+- **Standalone tokens without a preceding option**
+  - A token not starting with `-` must be the value of the previous option. Otherwise it triggers `Invalid argument format: <token>`.
+
+- **Boolean flags and values**
+  - Presence sets to true: `--verbose` ⇒ true.
+  - If you need an explicit value, use `--verbose=true|false` or `-v=false`. Writing `--verbose false` treats `false` as a separate token and will fail.
+
+- **Short options aren’t chained**
+  - `-abc` is parsed as `-a` with value `bc`, not three flags. Pass them separately (`-a -b -c`) or use long options.
+
+- **PowerShell split quirk (Windows)**
+  - PowerShell may split `-finput.txt` into two tokens: `-finput` and `.txt`. The parser reattaches `.txt` for string options so the value becomes `input.txt`.
+
+- **Arrays are comma-separated**
+  - Use a single token like `--list=a,b,c`. If values contain spaces, quote according to your shell.
+
+For deeper details and examples, see the [Beginner's Guide](docs/ArgParser.md#9-parsing-rules-and-behavior) and the [Cheat Sheet](docs/cheat-sheet.md#examples-tokens-and-args-arrays).
+
 ## 📖 System Requirements
 
 - **Compiler**: Free Pascal Compiler (FPC) 3.2.2+
