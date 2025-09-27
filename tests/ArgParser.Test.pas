@@ -34,6 +34,7 @@ type
     procedure Test15_NoBooleanNegation;
     procedure Test16_AllowMultipleAndGetAll;
     procedure Test17_ParseKnownLeftovers;
+  procedure Test19_LeftoversProperty;
     procedure Test18_TrailingDoubleDash;
   end;
 
@@ -238,6 +239,21 @@ begin
   CheckFalse(FParser.HasError);
   // unknown should be in leftovers
   CheckTrue(Length(leftovers) >= 2);
+end;
+
+procedure TTestParseArgs.Test19_LeftoversProperty;
+var
+  leftovers: TStringDynArray;
+begin
+  FParser.AddString('x','xval','X value','');
+  // Provide arguments containing an unknown token which should be returned as leftover
+  FParser.ParseKnownArgs(['--xval','1','--unknown','y','z'], leftovers);
+  CheckFalse(FParser.HasError);
+  // The out-parameter should contain the unknowns
+  CheckTrue(Length(leftovers) >= 2);
+  // The parser's Leftovers property should mirror the returned leftovers
+  CheckTrue(Length(FParser.Leftovers) >= 2);
+  CheckEquals(leftovers[0], FParser.Leftovers[0]);
 end;
 
 procedure TTestParseArgs.Test18_TrailingDoubleDash;

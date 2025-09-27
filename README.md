@@ -4,29 +4,23 @@
 [![Lazarus](https://img.shields.io/badge/Lazarus-4.0+-blue.svg)](https://www.lazarus-ide.org/)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE.md)
 [![Documentation](https://img.shields.io/badge/Docs-Available-brightgreen.svg)](docs/)
-[![Version](https://img.shields.io/badge/Version-1.0.0-blueviolet.svg)]()
+[![Version](https://img.shields.io/badge/Version-1.0.0-blueviolet.svg)](https://github.com/ikelaiah/argparser-fp/releases)
 
 A lightweight, record-based command-line argument parser for Free Pascal. `ArgParser-FP` is designed for small to medium console applications, offering a clean API to handle arguments with minimal setup.
 
 ## ✨ Features
 
-- **Simple API:** Define options with single-line convenience methods.
 - **Type-Safe Parsing:** Natively parse strings, integers, floats, booleans, and arrays.
 - **Flexible Syntax:** Support for multiple argument formats:
-  - Long options: `--file input.txt` or `--file=input.txt`
   - Short options: `-f input.txt` or `-finput.txt`
   - Boolean flags: `--verbose` or `--verbose=true/false`
 - **Automatic Help Text:** Generates `--help` and usage text from your option definitions.
-- **Callbacks:** Execute a procedure immediately when an option is parsed.
 - **Required Options:** Enforce mandatory arguments.
 - **Default Values:** Provide default values for optional arguments.
-- **Zero Dependencies:** Uses only standard Free Pascal RTL units.
 
 
-## 🚀 Quick Start
 
 Here is a complete example of a simple application:
-
 ```pascal
 // File: examples/MyApp/MyApp.pas
 program MyApp;
@@ -52,7 +46,8 @@ begin
   Parser.AddBoolean('h', 'help', 'Show this help message');
 
   // Parse command line arguments with one call
-  Parser.ParseCommandLine;
+ 
+ **Additional notes**
 
   if Parser.HasError then
   begin
@@ -115,14 +110,17 @@ Options:
 Example Usage
 
 ```bash
+  
+  
 # Traditional format
 $ ./MyApp --file input.txt --count 10 --verbose
 
+  
 # New equals format
 $ ./MyApp --file=input.txt --count=10 --verbose=true
 
 # Mixed formats
-$ ./MyApp --file=input.txt -c 10 --verbose
+**Additional notes**
 ```
 
 ## ⚠️ Common Pitfalls
@@ -143,9 +141,9 @@ $ ./MyApp --file=input.txt -c 10 --verbose
 - **Arrays are comma-separated**
   - Use a single token like `--list=a,b,c`. If values contain spaces, quote according to your shell.
 
-## -- separator and ParseCommandLineKnown
+-- separator and leftovers
 
-ArgParser-FP provides a convenience method `ParseCommandLineKnown(out Leftovers)` which behaves like `ParseCommandLine` but also supports a `--` separator. Tokens after `--` are not parsed as options and are returned in `Leftovers` for the caller to handle.
+`ParseCommandLine` now detects a `--` separator automatically. Any tokens after a `--` are not parsed as options and are returned to the caller via the `Leftovers` property. This simplifies the common call-site: you can call `ParseCommandLine` and then inspect `Parser.Leftovers` to forward any remaining arguments.
 
 Examples:
 
@@ -157,17 +155,20 @@ begin
   Parser.Init;
   try
     Parser.AddBoolean('v','verbose','Enable verbose');
-    Parser.ParseCommandLineKnown(leftovers);
-    // leftovers contains tokens after `--`, if any
+    Parser.ParseCommandLine;
+    leftovers := Parser.Leftovers; // tokens after `--`, if any
   finally
     Parser.Done;
   end;
 end;
 ```
 
-Use `ParseCommandLine` when you don't need the `--` semantics and prefer the simplest call-site.
+  If you previously used `ParseCommandLineKnown`, it continues to work as before; `ParseCommandLine` simply provides the same `--` semantics with a simpler call-site.
+
+Important: the parser no longer prints help or exits during parsing. The presence of `-h`/`--help` sets the built-in `help` flag; after calling `ParseCommandLine` your program should check `Parser.HasError` and `Parser.GetBoolean('help')` and then call `Parser.ShowUsage` or `Parser.ShowHelp` and exit if appropriate. This prevents the parser from freeing internal resources unexpectedly while your program continues running.
 
 Additional notes
+
 - Boolean negation: long boolean options also support a `--no-<name>` form to explicitly set a boolean flag to False. Example: `--no-verbose`.
 - Positional arguments: `AddPositional` creates ordered (positional) arguments. Use the optional `NArgs` parameter to control how many tokens a positional consumes. `NArgs = -1` means ‘‘greedy’’ (consume until the next option or the end of the line).
 - AllowMultiple / GetAll*: For options that can appear multiple times (for example `--tag a --tag b`), use the `GetAll*` helpers (e.g., `GetAllString`, `GetAllArray`) to retrieve every occurrence in the order parsed.
@@ -182,9 +183,9 @@ For deeper details and examples, see the [Beginner's Guide](docs/ArgParser.md#9-
 
 ## 📦 Installation
 
-1.  Copy `src/ArgParser.pas` into your project folder.
-2.  Add `ArgParser` to your program's `uses` clause.
-3.  Compile with FPC:
+1. Copy `src/ArgParser.pas` into your project folder.
+2. Add `ArgParser` to your program's `uses` clause.
+3. Compile with FPC:
 
 ```bash
 fpc MyProgram.pas

@@ -19,6 +19,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `SetError` no longer frees resources automatically; this preserves the error message so callers can print it before calling `ShowUsage`.
 - Documentation updated to reflect the above behavior and the recommended error-handling pattern.
+- `ParseCommandLine` now detects a `--` separator and leftovers are available via the `Leftovers` property.
+- Parsing no longer auto-displays help; callers should check the `help` flag after parsing and call `ShowHelp`/`ShowUsage` and exit. This avoids surprising resource finalization during parsing.
 
 ### Added
 

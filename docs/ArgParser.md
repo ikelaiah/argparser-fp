@@ -210,140 +210,11 @@ end.
 
 ---
 
-## 7. API Reference
 
-```pascal
-TArgType = (atString, atInteger, atFloat, atBoolean, atArray);
-
-TArgValue = record
-  ArgType: TArgType;
-  Str:     string;
-  Int:     Integer;
-  Flt:     Double;
-  Bool:    Boolean;
-  Arr:     TStringDynArray;
-end;
-
-TArgCallback      = procedure(const Value: TArgValue);
-TArgCallbackClass = procedure(const Value: TArgValue) of object;
-
-TArgParser = record
-  procedure Init; // Initialize/reset parser state (clears options, errors, usage text, and results)
-  procedure SetUsage(const AUsage: string);
-  procedure Add(
-    ShortOpt: Char;
-    LongOpt: string;
-    ArgType: TArgType;
-    HelpText: string;
-    Callback: TArgCallback;
-    CallbackClass: TArgCallbackClass;
-    Required: Boolean;
-    DefaultValue: TArgValue
-  );
-  procedure AddString(const ShortOpt: Char; const LongOpt, HelpText: string; const DefaultValue: string);
-  procedure AddInteger(const ShortOpt: Char; const LongOpt, HelpText: string; const DefaultValue: Integer; const Required: Boolean = False);
-  procedure AddFloat(const ShortOpt: Char; const LongOpt, HelpText: string; const DefaultValue: Double = 0.0; const Required: Boolean = False);
-  procedure AddBoolean(const ShortOpt: Char; const LongOpt, HelpText: string; const DefaultValue: Boolean = False; const Required: Boolean = False);
-  procedure AddArray(const ShortOpt: Char; const LongOpt, HelpText: string; const Required: Boolean = False);
-  procedure ParseCommandLine;
-  function HasError: Boolean;
-  property Error: string read GetError;
-  procedure ShowUsage;
-  procedure ShowHelp;
-  function OptionCount: Integer;
-  function GetString(const LongOpt: string): string;
-  function GetInteger(const LongOpt: string): Integer;
-  function GetFloat(const LongOpt: string): Double;
-  function GetBoolean(const LongOpt: string): Boolean;
-  function GetArray(const LongOpt: string): TStringDynArray;
-end;
-```
-
----
-
-## 8. Class/Record Diagram
-
-```mermaid
-classDiagram
-    class TArgType {
-        <<enumeration>>
-        atString
-        atInteger
-        atFloat
-        atBoolean
-        atArray
-    }
-    class TArrayOfString {
-        <<type>>
-        TStringDynArray
-    }
-    class TArgValue {
-        <<record>>
-        ArgType: TArgType
-        Str: string
-        Int: Integer
-        Flt: Double
-        Bool: Boolean
-        Arr: TArrayOfString
-    }
-    class TArgCallback {
-        <<procedure>>
-        +Invoke(Value: TArgValue)
-    }
-    class TArgCallbackClass {
-        <<procedure of object>>
-        +Invoke(Value: TArgValue)
-    }
-    class TArgOption {
-        <<record>>
-        ShortOpt: Char
-        LongOpt: string
-        ArgType: TArgType
-        HelpText: string
-        DefaultValue: TArgValue
-        Callback: TArgCallback
-        CallbackClass: TArgCallbackClass
-        Required: Boolean
-        WasSpecified: Boolean
-    }
-    class TParseResult {
-        <<record>>
-        Name: string
-        Value: TArgValue
-    }
-    class TArgParser {
-        <<record>>
-        -FOptions: array of TArgOption
-        -FResults: array of TParseResult
-        -FUsage: string
-        -FError: string
-        +Init()
-        +SetUsage(AUsage: string)
-        +Add(ShortOpt, LongOpt, ArgType, HelpText, Callback, CallbackClass, Required, DefaultValue)
-        +ParseCommandLine()
-        +HasError(): Boolean
-        +GetError(): string
-        +ShowUsage()
-        +ShowHelp()
-        +OptionCount(): Integer
-        +GetString(LongOpt: string): string
-        +GetInteger(LongOpt: string): Integer
-        +GetFloat(LongOpt: string): Double
-        +GetBoolean(LongOpt: string): Boolean
-        +GetArray(LongOpt: string): TArrayOfString
-    }
-    TArgParser o-- "*" TArgOption : contains
-    TArgParser o-- "*" TParseResult : stores
-    TArgOption o-- "1" TArgValue : has
-    TParseResult o-- "1" TArgValue : has
-```
-
----
-
-## 9. Parsing rules and behavior
+## 7. Parsing rules and behavior
 
 - **Help detection**
-  - `-h` or `--help` anywhere in the args triggers `ShowHelp` and exits parsing immediately.
+  - The parser no longer auto-displays help during parsing. A `-h` or `--help` token will set the built-in `help` flag; after calling `ParseCommandLine` your program should inspect `Parser.HasError` and `Parser.GetBoolean('help')` and then call `Parser.ShowUsage` or `Parser.ShowHelp` and exit if appropriate. This avoids surprising resource finalization during parsing.
 
 - **Accepted option forms**
   - Long option with inline value: `--name=value`
@@ -405,6 +276,9 @@ classDiagram
   - Any switch not matching a defined short/long option is an error: `Unknown option: <opt>`.
   - Type conversion failures produce `Invalid value for option <opt>` or for booleans `Invalid boolean value for option <opt>`.
 
+- **Double-dash (`--`) and leftovers**
+  - `ParseCommandLine` now supports a `--` separator. Tokens after `--` are not parsed as options and are returned via the `Leftovers` property so callers can forward them to subcommands or handle them specially.
+
 - **PowerShell compatibility**
   - Some shells (notably PowerShell) can split concatenated short string values such as `-finput.txt` into two tokens: `-finput` and `.txt`.
   - The parser detects this for string options and reattaches the following token if it begins with `.`. Example:
@@ -439,7 +313,7 @@ myapp --verbose
 myapp --verbose=false
 ```
 
-## 10. Tips & Best Practices
+## 8. Tips & Best Practices
 
 - Always initialize the `DefaultValue` record before `Add`.
 - For boolean flags, presence ⇒ `True`.

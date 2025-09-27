@@ -116,11 +116,7 @@ type
     procedure Add(const ShortOpt: Char; const LongOpt: string; const ArgType: TArgType; const HelpText: string; const Callback: TArgCallback; const CallbackClass: TArgCallbackClass; const Required: Boolean; const DefaultValue: TArgValue);
     { Parse command-line arguments directly from ParamStr }
     procedure ParseCommandLine;
-  { Parse command-line with support for `--` separator; returns leftover tokens after parsing }
-  { Notes:
-    - Tokens after a `--` are not parsed as options and are returned in Leftovers.
-    - Use this when you need to forward remaining args (for example to a subcommand).
-  }
+  { Parse command-line with support for `--` separator; leftovers can be retrieved via GetLeftovers }
   procedure ParseCommandLineKnown(out Leftovers: TStringDynArray);
     { Returns True if an error occurred during parsing. }
     function HasError: Boolean;
@@ -161,6 +157,9 @@ type
   function GetAllArray(const LongOpt: string): TStringDynArrayArray;
   { Parse known args: returns leftovers (unknown tokens) instead of failing }
   procedure ParseKnownArgs(const Args: TStringDynArray; out Leftovers: TStringDynArray);
+  { Return leftovers captured from the last ParseCommandLine call }
+  function GetLeftovers: TStringDynArray;
+  property Leftovers: TStringDynArray read GetLeftovers;
     { Accessors for parsed values by long option name. }
     function GetString(const LongOpt: string): string;
     function GetInteger(const LongOpt: string): Integer;
@@ -601,11 +600,11 @@ begin
   FillChar(Value, 0, SizeOf(Value));
 
   // Step 0: Early help handling (bypass normal parsing)
-  if IsHelpRequested(Args) then
-  begin
-    ShowHelp;
-    Exit;
-  end;
+  // Note: Do not auto-show help here. Let normal parsing proceed so callers
+  // can inspect the parsed results (including the built-in 'help' flag) and
+  // decide whether to display usage/help and exit. This matches the README
+  // examples and avoids surprising behavior where help is printed but the
+  // caller's program continues executing.
 
   // Step 1: Prepare a clean parse state
   ResetParseState;
@@ -777,9 +776,57 @@ end;
 procedure TArgParser.ParseCommandLine;
 var
   Args: TStringDynArray;
+  i, dashIdx: Integer;
+  LeftArgs, RightArgs: TStringDynArray;
 begin
   Args := ParamStrToArray;
-  Parse(Args);
+  // Detect `--` separator and split like ParseCommandLineKnown did
+  dashIdx := -1;
+  for i := Low(Args) to High(Args) do
+    if Args[i] = '--' then
+    begin
+      dashIdx := i;
+      Break;
+    end;
+
+  if dashIdx >= 0 then
+  begin
+    if dashIdx > Low(Args) then
+    begin
+      SetLength(LeftArgs, dashIdx - Low(Args));
+      for i := 0 to Length(LeftArgs)-1 do
+        LeftArgs[i] := Args[Low(Args) + i];
+    end
+    else
+      LeftArgs := nil;
+
+    if dashIdx < High(Args) then
+    begin
+      SetLength(RightArgs, High(Args) - dashIdx);
+      for i := 0 to Length(RightArgs)-1 do
+        RightArgs[i] := Args[dashIdx + 1 + i];
+    end
+    else
+      RightArgs := nil;
+  end
+  else
+  begin
+    LeftArgs := Args;
+    RightArgs := nil;
+  end;
+
+  // Parse left side as normal
+  Parse(LeftArgs);
+  // Populate FLeftovers with any right-side tokens
+  if Length(RightArgs) > 0 then
+  begin
+    FLeftovers := nil;
+    SetLength(FLeftovers, Length(RightArgs));
+    for i := 0 to High(RightArgs) do
+      FLeftovers[i] := RightArgs[i];
+  end
+  else
+    FLeftovers := nil;
 end;
 
 procedure TArgParser.ParseCommandLineKnown(out Leftovers: TStringDynArray);
@@ -855,8 +902,14 @@ begin
   for i := Low(FOptions) to High(FOptions) do
   begin
     Write('  ');
-    Write('-' + FOptions[i].ShortOpt);
-    Write(', --' + FOptions[i].LongOpt);
+    // Only print short option if defined (non-zero char). Positionals may
+    // have ShortOpt = #0; in that case, omit the short form and align output.
+    if FOptions[i].ShortOpt <> #0 then
+      Write('-' + FOptions[i].ShortOpt + ', ')
+    else
+      Write('    '); // spaces to align when no short option
+
+    Write('--' + FOptions[i].LongOpt);
     Write(Space(MaxLong - Length(FOptions[i].LongOpt)));
     Write('  ');
     WriteLn(FOptions[i].HelpText);
@@ -900,6 +953,20 @@ end;
 function TArgParser.OptionCount: Integer;
 begin
   Result := Length(FOptions);
+end;
+
+function TArgParser.GetLeftovers: TStringDynArray;
+var
+  i: Integer;
+begin
+  if Length(FLeftovers) = 0 then
+  begin
+    Result := nil;
+    Exit;
+  end;
+  SetLength(Result, Length(FLeftovers));
+  for i := 0 to High(FLeftovers) do
+    Result[i] := FLeftovers[i];
 end;
 
 procedure TArgParser.AddOption(const Option: TArgOption);

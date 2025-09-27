@@ -35,8 +35,24 @@ begin
     P.AddPositional('files', atArray, 'Files to process', '', True, -1);
     P.AddBoolean('v','verbose','Enable verbose mode');
 
-    // Parse the program command-line and collect leftovers (tokens after `--` are included)
-    P.ParseCommandLineKnown(leftovers);
+  // Parse the program command-line and collect leftovers (tokens after `--` are included)
+  // New simpler API: ParseCommandLine automatically supports `--` and leftovers
+  P.ParseCommandLine;
+  leftovers := P.Leftovers;
+
+    // Handle errors or help requests first
+    if P.HasError then
+    begin
+      Writeln('Error: ', P.Error);
+      P.ShowUsage;
+      Exit;
+    end;
+
+    if P.GetBoolean('help') then
+    begin
+      P.ShowHelp;
+      Exit;
+    end;
 
     // Print results
     Writeln('Verbose: ', BoolToStr(P.GetBoolean('verbose'), True));

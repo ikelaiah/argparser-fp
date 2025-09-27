@@ -59,6 +59,7 @@ end.
 ArgParser supports multiple flexible formats for specifying arguments:
 
 ### Long Options
+
 ```bash
 # Traditional space-separated format
 --file input.txt
@@ -72,6 +73,7 @@ ArgParser supports multiple flexible formats for specifying arguments:
 ```
 
 ### Short Options
+
 ```bash
 # Space-separated format
 -f input.txt
@@ -85,6 +87,7 @@ ArgParser supports multiple flexible formats for specifying arguments:
 ```
 
 ### Boolean Options
+
 ```bash
 # Flag format (sets to true)
 --verbose
@@ -195,6 +198,12 @@ Parse the command-line arguments after all options are defined.
 // Parse directly from ParamStr
 Parser.ParseCommandLine;
 ```
+
+Note: the parser no longer prints help or exits during parsing. After calling `ParseCommandLine`, check `Parser.HasError` and `Parser.GetBoolean('help')` and call `Parser.ShowUsage` or `Parser.ShowHelp` and exit if appropriate.
+
+Double-dash (`--`) support:
+
+`ParseCommandLine` will detect `--` and anything after it will be stored in `Parser.Leftovers`. This is useful for forwarding remaining args to subcommands.
 
 ### 4. Accessing Values
 
