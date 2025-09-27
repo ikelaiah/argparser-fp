@@ -77,6 +77,7 @@ type
     FResults: TParseResults;  { Parsed results }
     FLeftovers: TStringDynArray; { Unknown/unconsumed tokens when using ParseKnown }
     FParseKnown: Boolean; { If true, unknown tokens are returned in Leftovers instead of error }
+    FLookup: TStringList; { maps '-x' and '--long' to option index (as string) }
 
     { Locate option by input switch. }
     function FindOption(const Opt: string): Integer;
@@ -198,6 +199,9 @@ begin
   FUsage := '';
   AddBoolean('h', 'help', 'Show this help message');
   FParseKnown := False;
+  // Initialize lookup mapping
+  FLookup := TStringList.Create;
+  FLookup.CaseSensitive := False;
 end;
 
 procedure TArgParser.Add(const ShortOpt: Char; const LongOpt: string;
@@ -227,23 +231,17 @@ end;
 
 function TArgParser.FindOption(const Opt: string): Integer;
 var
-  i: Integer;
+  idx: Integer;
+  s: string;
 begin
   Result := -1;
-  for i := 0 to High(FOptions) do
-  begin
-    if (Length(Opt) = 2) and (Opt[1] = '-') and (UpCase(FOptions[i].ShortOpt) = UpCase(Opt[2])) then
-    begin
-      Result := i;
-      Exit;
-    end
-    else if (Length(Opt) > 2) and (Opt[1] = '-') and (Opt[2] = '-') and
-      SameText(FOptions[i].LongOpt, Copy(Opt, 3, MaxInt)) then
-    begin
-      Result := i;
-      Exit;
-    end;
-  end;
+  if not Assigned(FLookup) then
+    Exit;
+  // Normalize key to match how we stored them in AddOption
+  s := Opt;
+  idx := FLookup.IndexOf(s);
+  if idx >= 0 then
+    Result := Integer(PtrInt(FLookup.Objects[idx]));
 end;
 
 function TArgParser.ParseValue(const ValueStr: string; const ArgType: TArgType; var Value: TArgValue): Boolean;
@@ -982,6 +980,16 @@ begin
   if LOption.NArgs = 0 then
     LOption.NArgs := 0;
   FOptions[High(FOptions)] := LOption;
+  // add to lookup map for fast finding
+  if Assigned(FLookup) then
+  begin
+    // long form
+    if LOption.LongOpt <> '' then
+      FLookup.AddObject('--' + LOption.LongOpt, TObject(High(FOptions)));
+    // short form
+    if LOption.ShortOpt <> #0 then
+      FLookup.AddObject('-' + LOption.ShortOpt, TObject(High(FOptions)));
+  end;
 end;
 
 procedure TArgParser.AddString(const ShortOpt: Char; const LongOpt, HelpText: string;
@@ -1086,10 +1094,8 @@ begin
   Option.Required := Required;
   Option.DefaultValue := DefaultValue;
   Option.IsPositional := True;
-  // PositionIndex: append at end
-  idx := 0;
-  for idx := 0 to High(FOptions) do ; // noop to find High
-  Option.PositionIndex := Length(FOptions); // next index
+  // PositionIndex: append at end (next index)
+  Option.PositionIndex := Length(FOptions);
   Option.AllowMultiple := False;
   Option.NArgs := NArgs;
 
@@ -1182,8 +1188,6 @@ var
   tmp: TStringDynArrayArray;
 begin
   cnt := 0;
-begin
-  cnt := 0;
   for i := Low(FResults) to High(FResults) do
     if (FResults[i].Name = LongOpt) and (FResults[i].Value.ArgType = atArray) then
       Inc(cnt);
@@ -1196,7 +1200,6 @@ begin
       Inc(cnt);
     end;
   Result := tmp;
-end;
 end;
 
 procedure TArgParser.AddArray(const ShortOpt: Char; const LongOpt, HelpText: string; const DefaultArr: array of string; const Required: Boolean = False);
@@ -1295,6 +1298,12 @@ begin
   for i := 0 to High(FOptions) do
     Finalize(FOptions[i]);
   FOptions := nil;
+  // Free lookup
+  if Assigned(FLookup) then
+  begin
+    FLookup.Free;
+    FLookup := nil;
+  end;
   // Do NOT clear FError/FUsage/FHasError here.
   // Leaving them intact allows callers to read Error and ShowUsage after failure.
 end;
