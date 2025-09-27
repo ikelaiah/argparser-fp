@@ -4,9 +4,12 @@
 [![Lazarus](https://img.shields.io/badge/Lazarus-4.0+-blue.svg)](https://www.lazarus-ide.org/)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE.md)
 [![Documentation](https://img.shields.io/badge/Docs-Available-brightgreen.svg)](docs/)
-[![Version](https://img.shields.io/badge/Version-1.0.0-blueviolet.svg)](https://github.com/ikelaiah/argparser-fp/releases)
+[![Version](https://img.shields.io/badge/Version-0.2.0-blueviolet.svg)](https://github.com/ikelaiah/argparser-fp/releases)
 
 A lightweight, record-based command-line argument parser for Free Pascal. `ArgParser-FP` is designed for small to medium console applications, offering a clean API to handle arguments with minimal setup.
+
+> [!WARNING]  
+> This library is curently in active development. While it is functional and has been tested, some features may change in future releases. Please review the [Changelog](CHANGELOG.md) for the latest updates.
 
 ## ✨ Features
 
@@ -46,8 +49,6 @@ begin
   Parser.AddBoolean('h', 'help', 'Show this help message');
 
   // Parse command line arguments with one call
- 
- **Additional notes**
 
   if Parser.HasError then
   begin
@@ -224,6 +225,16 @@ Contributions are welcome! Please feel free to submit a Pull Request. For major 
 ## ⚖️ License
 
 This project is licensed under the MIT License - see the [LICENSE.md](LICENSE.md) file for details.
+
+## Release 0.2.0 — notes
+
+This minor release focuses on code quality and developer ergonomics:
+
+- Add a fast option lookup map (`FLookup`) to speed option resolution and centralize option registration.
+- Positionals are now strictly positional by default: `AddPositional` arguments are matched only by position and are not automatically available as `--name` switches. If you need a positional that is also accessible via a switch, use a future helper `AddPositionalAsNamed` (not present in 0.2.0) or add both an option and a positional.
+- Documentation updates (cheat-sheet and beginner's guide) to clarify behavior and edge cases.
+
+These changes are backwards-compatible for common usage patterns; they mainly affect advanced edge cases where a positional had previously been accessible via `--name`.
 
 ## 🙏 Acknowledgments
 

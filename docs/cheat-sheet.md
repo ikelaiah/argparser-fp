@@ -100,7 +100,9 @@ ArgParser supports multiple flexible formats for specifying arguments:
 ```
 
 ### Mixed Usage
+
 You can mix different formats in the same command:
+
 ```bash
 mytool --input=data.txt -v --count 100 --output=result.txt
 ```
@@ -238,6 +240,8 @@ files := Parser.GetAllString('input'); // or GetAllArray depending on how you de
 GetAll* helpers collect multiple occurrences of the same option. For example, if the user passes `--tag a --tag b`, use `GetAllString('tag')` or `GetAllArray('tag')` to retrieve both values in order.
 
 Boolean options also support a negation form using `--no-<name>` to explicitly set a boolean to False. Example: `--no-verbose`.
+
+**Note (v0.2.0):** Positionals added with `AddPositional` are strictly positional by default and are not automatically registered as `--name` switches. The parser maintains a separate switch lookup for option tokens (those starting with `-`) and does not use that lookup to resolve positional tokens. This reduces ambiguity and better matches common CLI expectations.
 
 ### 5. Error Handling & Help
 

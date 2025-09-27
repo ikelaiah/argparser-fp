@@ -5,9 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.0.0] - 2025-09-25
 
-### Fixed
+## [0.3.0] - 2025-09-28
+
+### Added (0.3.0)
+
+- Fast option lookup (`FLookup`) to map `-x` / `--name` switches to internal option records. This improves parsing performance and centralizes option registration.
+
+### Changed (0.3.0)
+
+- Positionals are strictly positional by default: `AddPositional` arguments are matched only by their position in the argument list and are no longer automatically registered as `--name` switches. This reduces ambiguity and better matches common CLI expectations.
+- Documentation updates across README, cheat-sheet and the beginner's guide to explain the lookup behavior and the new positional semantics.
+
+### Fixed (0.3.0)
+
+- Fixed a small bug in `GetAllArray` and simplified `AddPositional` position index logic for maintainability.
+
+### Notes (0.3.0)
+
+- These changes are backward-compatible for most common use cases. Advanced callers that relied on positional arguments being accessible via `--name` should update their call sites to add an explicit option if they still need the named form.
+
+
+## [0.2.0] - 2025-09-27
+
+### Fixed (0.2.0)
 
 - Short option with inline value now works reliably across shells:
   - Handles `-finput.txt` and cases where PowerShell splits it into `-finput` and `.txt`.
@@ -15,22 +36,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `ShowUsage` frees internal resources (and clears stored strings) so examples that print error + usage and exit have 0 unfreed blocks.
   - `ShowHelp` continues to free internal resources after printing full help.
 
-### Changed
+
+### Changed (0.2.0)
 
 - `SetError` no longer frees resources automatically; this preserves the error message so callers can print it before calling `ShowUsage`.
 - Documentation updated to reflect the above behavior and the recommended error-handling pattern.
 - `ParseCommandLine` now detects a `--` separator and leftovers are available via the `Leftovers` property.
 - Parsing no longer auto-displays help; callers should check the `help` flag after parsing and call `ShowHelp`/`ShowUsage` and exit. This avoids surprising resource finalization during parsing.
 
-### Added
+
+### Added (0.2.0)
 
 - Positional arguments support via `AddPositional` with ordered matching and `NArgs` for fixed or greedy consumption (`NArgs = -1`).
 - `ParseCommandLineKnown(out Leftovers)` helper which supports the `--` separator and returns leftover tokens for forwarding to subcommands.
 - Allow multiple occurrences for options (accumulation) and `GetAll*` accessors to retrieve all values in order (e.g., `GetAllString`, `GetAllArray`).
 - Boolean negation using `--no-<option>` to explicitly set boolean flags to false.
 
-
-## [0.9.0] - 2025-09-19
+## [0.1.0] - 2025-09-19
 
 First release as an independent package, previously was part of TidyKit.
 

@@ -983,12 +983,17 @@ begin
   // add to lookup map for fast finding
   if Assigned(FLookup) then
   begin
-    // long form
-    if LOption.LongOpt <> '' then
-      FLookup.AddObject('--' + LOption.LongOpt, TObject(High(FOptions)));
-    // short form
-    if LOption.ShortOpt <> #0 then
-      FLookup.AddObject('-' + LOption.ShortOpt, TObject(High(FOptions)));
+    // Only register non-positional options in the lookup. Positionals are
+    // matched by position, not by `--name` form.
+    if not LOption.IsPositional then
+    begin
+      // long form
+      if LOption.LongOpt <> '' then
+        FLookup.AddObject('--' + LOption.LongOpt, TObject(High(FOptions)));
+      // short form
+      if LOption.ShortOpt <> #0 then
+        FLookup.AddObject('-' + LOption.ShortOpt, TObject(High(FOptions)));
+    end;
   end;
 end;
 
