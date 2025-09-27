@@ -214,6 +214,22 @@ begin
 end;
 ```
 
+## 🔢 Positionals, NArgs and repeated options
+
+Positionals are ordered arguments added with `AddPositional`. Use the optional `NArgs` parameter to control how many tokens the positional consumes. Use `NArgs = -1` for greedy consumption.
+
+Example: two file positionals (one greedy)
+
+```pascal
+Parser.AddPositional('input', atString, 'Input files', '', True, -1); // greedy: consume remaining non-option tokens
+Parser.ParseCommandLine;
+files := Parser.GetAllString('input'); // or GetAllArray depending on how you define it
+```
+
+GetAll* helpers collect multiple occurrences of the same option. For example, if the user passes `--tag a --tag b`, use `GetAllString('tag')` or `GetAllArray('tag')` to retrieve both values in order.
+
+Boolean options also support a negation form using `--no-<name>` to explicitly set a boolean to False. Example: `--no-verbose`.
+
 ### 5. Error Handling & Help
 
 ArgParser provides built-in methods for error reporting and displaying help text.
@@ -235,7 +251,7 @@ end;
 
 The library can automatically generate and display help text based on your defined options.
 
-**Show Full Help (`--help`)**
+### Show Full Help (`--help`)
 
 The `ShowHelp` procedure displays the complete, formatted help message and frees resources. You should exit the program after showing help.
 
@@ -251,7 +267,7 @@ begin
 end;
 ```
 
-**Show Compact Usage**
+### Show Compact Usage
 
 The `ShowUsage` procedure displays only the compact, one-line usage banner. This is useful for showing a quick reminder when an error occurs.
 
@@ -264,7 +280,7 @@ begin
 end;
 ```
 
-**Set Custom Usage Banner**
+### Set Custom Usage Banner
 
 You can customize the usage banner shown by `ShowHelp` and `ShowUsage`. This is best set during initialization.
 

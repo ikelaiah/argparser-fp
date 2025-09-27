@@ -143,6 +143,35 @@ $ ./MyApp --file=input.txt -c 10 --verbose
 - **Arrays are comma-separated**
   - Use a single token like `--list=a,b,c`. If values contain spaces, quote according to your shell.
 
+## -- separator and ParseCommandLineKnown
+
+ArgParser-FP provides a convenience method `ParseCommandLineKnown(out Leftovers)` which behaves like `ParseCommandLine` but also supports a `--` separator. Tokens after `--` are not parsed as options and are returned in `Leftovers` for the caller to handle.
+
+Examples:
+
+```pascal
+var
+  Parser: TArgParser;
+  leftovers: TStringDynArray;
+begin
+  Parser.Init;
+  try
+    Parser.AddBoolean('v','verbose','Enable verbose');
+    Parser.ParseCommandLineKnown(leftovers);
+    // leftovers contains tokens after `--`, if any
+  finally
+    Parser.Done;
+  end;
+end;
+```
+
+Use `ParseCommandLine` when you don't need the `--` semantics and prefer the simplest call-site.
+
+Additional notes
+- Boolean negation: long boolean options also support a `--no-<name>` form to explicitly set a boolean flag to False. Example: `--no-verbose`.
+- Positional arguments: `AddPositional` creates ordered (positional) arguments. Use the optional `NArgs` parameter to control how many tokens a positional consumes. `NArgs = -1` means ‘‘greedy’’ (consume until the next option or the end of the line).
+- AllowMultiple / GetAll*: For options that can appear multiple times (for example `--tag a --tag b`), use the `GetAll*` helpers (e.g., `GetAllString`, `GetAllArray`) to retrieve every occurrence in the order parsed.
+
 For deeper details and examples, see the [Beginner's Guide](docs/ArgParser.md#9-parsing-rules-and-behavior) and the [Cheat Sheet](docs/cheat-sheet.md#examples-tokens-and-args-arrays).
 
 ## 📖 System Requirements
@@ -177,8 +206,8 @@ For detailed documentation on all available procedures and functions, please see
 3. Run the Test Runner:
 
 ```bash
-$ cd tests
-$ ./TestRunner.exe -a --format=plain
+cd tests
+./TestRunner.exe -a --format=plain
 ```
 
 ## 🤝 Contributing
@@ -201,9 +230,9 @@ This project is licensed under the MIT License - see the [LICENSE.md](LICENSE.md
 - [Free Pascal Dev Team](https://www.freepascal.org/) for the Pascal compiler.
 - [Lazarus IDE Team](https://www.lazarus-ide.org/) for such an amazing IDE.
 - [rednose🇳🇱🇪🇺](https://discord.com/channels/570025060312547359/570025355717509147/1299342586464698368) of the [Unofficial Free Pascal discord server](https://discord.com/channels/570025060312547359/570091337173696513) for providing the initial DuckDB Pascal bindings via [Chet](https://discord.com/channels/570025060312547359/570025355717509147/1299342586464698368).
-- The kind and helpful individuals on various online platforms such as;
-    - [Unofficial Free Pascal discord server](https://discord.com/channels/570025060312547359/570091337173696513).
-    - [Free Pascal & Lazarus forum](https://forum.lazarus.freepascal.org/index.php).
-    - [Tweaking4All Delphi, Lazarus, Free Pascal forum](https://www.tweaking4all.com/forum/delphi-lazarus-free-pascal/).
-    - [Laz Planet - Blogspot](https://lazplanet.blogspot.com/) / [Laz Planet - GitLab](https://lazplanet.gitlab.io/).
-    - [Delphi Basics](https://www.delphibasics.co.uk/index.html).
+- The kind and helpful individuals on various online platforms such as:
+  - [Unofficial Free Pascal discord server](https://discord.com/channels/570025060312547359/570091337173696513).
+  - [Free Pascal & Lazarus forum](https://forum.lazarus.freepascal.org/index.php).
+  - [Tweaking4All Delphi, Lazarus, Free Pascal forum](https://www.tweaking4all.com/forum/delphi-lazarus-free-pascal/).
+  - [Laz Planet - Blogspot](https://lazplanet.blogspot.com/) / [Laz Planet - GitLab](https://lazplanet.gitlab.io/).
+  - [Delphi Basics](https://delphibasics.co.uk/index.html).

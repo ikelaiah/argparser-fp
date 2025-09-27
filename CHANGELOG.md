@@ -20,6 +20,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `SetError` no longer frees resources automatically; this preserves the error message so callers can print it before calling `ShowUsage`.
 - Documentation updated to reflect the above behavior and the recommended error-handling pattern.
 
+### Added
+
+- Positional arguments support via `AddPositional` with ordered matching and `NArgs` for fixed or greedy consumption (`NArgs = -1`).
+- `ParseCommandLineKnown(out Leftovers)` helper which supports the `--` separator and returns leftover tokens for forwarding to subcommands.
+- Allow multiple occurrences for options (accumulation) and `GetAll*` accessors to retrieve all values in order (e.g., `GetAllString`, `GetAllArray`).
+- Boolean negation using `--no-<option>` to explicitly set boolean flags to false.
+
 
 ## [0.9.0] - 2025-09-19
 

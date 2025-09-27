@@ -45,6 +45,11 @@ type
     Callback: TArgCallback; { Callback procedure for this option }
     CallbackClass: TArgCallbackClass; { Class callback procedure for this option }
     Required: Boolean;   { Flag indicating if this option is required }
+    { Extended metadata }
+    IsPositional: Boolean; { True for positional arguments }
+    PositionIndex: Integer; { Order index for positionals (0-based) }
+    AllowMultiple: Boolean; { Allow repeated occurrences (accumulate) }
+    NArgs: Integer;        { 0 = single token (default), -1 = greedy (consume until next option), >0 = fixed count }
   end;
 
   { TOptionsArray: Dynamic array of TArgOption records. }
@@ -58,6 +63,10 @@ type
   { TParseResults: Dynamic array of TParseResult records. }
   TParseResults = array of TParseResult;
 
+  { Additional dynamic array types used by GetAll* accessors }
+  TBooleanDynArray = array of Boolean;
+  TStringDynArrayArray = array of TStringDynArray;
+
   { TArgParser: Main record to define options, parse arguments, and access results. }
   TArgParser = record
   private
@@ -66,6 +75,8 @@ type
     FError: string;           { Error message if parsing fails }
     FHasError: Boolean;       { Flag indicating parsing error }
     FResults: TParseResults;  { Parsed results }
+    FLeftovers: TStringDynArray; { Unknown/unconsumed tokens when using ParseKnown }
+    FParseKnown: Boolean; { If true, unknown tokens are returned in Leftovers instead of error }
 
     { Locate option by input switch. }
     function FindOption(const Opt: string): Integer;
@@ -92,10 +103,12 @@ type
     procedure RunCallbacks(const OptionIdx: Integer; const Value: TArgValue);
     { Appends the parsed (Name, Value) pair to FResults }
     procedure AppendResult(const OptionIdx: Integer; const Value: TArgValue);
+  procedure AppendLeftover(const Token: string);
     { Ensures all options marked Required=True were provided at least once }
     function CheckRequiredOptionsPresent: Boolean;
     { Parse the provided command-line arguments array. }
     procedure Parse(const Args: TStringDynArray);
+    procedure ParseKnown(const Args: TStringDynArray; out Leftovers: TStringDynArray);
   public
     { Initialize parser state. Call before adding any options. }
     procedure Init;
@@ -103,6 +116,12 @@ type
     procedure Add(const ShortOpt: Char; const LongOpt: string; const ArgType: TArgType; const HelpText: string; const Callback: TArgCallback; const CallbackClass: TArgCallbackClass; const Required: Boolean; const DefaultValue: TArgValue);
     { Parse command-line arguments directly from ParamStr }
     procedure ParseCommandLine;
+  { Parse command-line with support for `--` separator; returns leftover tokens after parsing }
+  { Notes:
+    - Tokens after a `--` are not parsed as options and are returned in Leftovers.
+    - Use this when you need to forward remaining args (for example to a subcommand).
+  }
+  procedure ParseCommandLineKnown(out Leftovers: TStringDynArray);
     { Returns True if an error occurred during parsing. }
     function HasError: Boolean;
     { Read-only property to get error message. }
@@ -122,6 +141,26 @@ type
     procedure AddBoolean(const ShortOpt: Char; const LongOpt, HelpText: string; const Default: Boolean = False; const Required: Boolean = False);
     procedure AddArray(const ShortOpt: Char; const LongOpt, HelpText: string; const Required: Boolean = False); overload;
     procedure AddArray(const ShortOpt: Char; const LongOpt, HelpText: string; const DefaultArr: array of string; const Required: Boolean = False); overload;
+  { Add a positional argument (ordered). PositionIndex may be omitted (append).
+    Parameters:
+      - Name: logical name used to retrieve the value(s)
+      - ArgType: type of the positional (atString, atInteger, atFloat, atBoolean, atArray)
+      - NArgs: number of tokens to consume: 0 = single token (default), >0 fixed count, -1 = greedy (consume until next option/end)
+    Positionals are matched in the order they are added. Greedy positionals (NArgs=-1)
+    will consume all remaining non-option tokens.
+  }
+  procedure AddPositional(const Name: string; const ArgType: TArgType; const HelpText: string; const Default: string = ''; const Required: Boolean = False; const NArgs: Integer = 0);
+  { Return all occurrences for options (accumulated).
+    Use these helpers when an option may appear multiple times (AllowMultiple) or when
+    working with array-like options. Values are returned in the order parsed.
+  }
+  function GetAllString(const LongOpt: string): TStringDynArray;
+  function GetAllInteger(const LongOpt: string): TIntegerDynArray;
+  function GetAllFloat(const LongOpt: string): TDoubleDynArray;
+  function GetAllBoolean(const LongOpt: string): TBooleanDynArray;
+  function GetAllArray(const LongOpt: string): TStringDynArrayArray;
+  { Parse known args: returns leftovers (unknown tokens) instead of failing }
+  procedure ParseKnownArgs(const Args: TStringDynArray; out Leftovers: TStringDynArray);
     { Accessors for parsed values by long option name. }
     function GetString(const LongOpt: string): string;
     function GetInteger(const LongOpt: string): Integer;
@@ -159,6 +198,7 @@ begin
   FError := '';
   FUsage := '';
   AddBoolean('h', 'help', 'Show this help message');
+  FParseKnown := False;
 end;
 
 procedure TArgParser.Add(const ShortOpt: Char; const LongOpt: string;
@@ -178,7 +218,11 @@ begin
   Option.CallbackClass := CallbackClass;
   Option.Required := Required;
   Option.DefaultValue := DefaultValue;
-  
+  // Initialize extended metadata defaults
+  Option.IsPositional := False;
+  Option.PositionIndex := -1;
+  Option.AllowMultiple := False;
+  Option.NArgs := 0;
   AddOption(Option);
 end;
 
@@ -248,16 +292,15 @@ begin
       begin
         // Use SplitString from SysUtils
         Parts := SplitString(ValueStr, ',');
-        for i := 0 to High(Parts) do 
+        for i := 0 to High(Parts) do
         begin
           s := Trim(Parts[i]);
-          if s <> '' then 
+          if s <> '' then
           begin
             SetLength(Value.Arr, Length(Value.Arr)+1);
             Value.Arr[High(Value.Arr)] := s;
           end;
         end;
-        
         Result := True;
       end;
   end;
@@ -358,7 +401,9 @@ begin
   // Validate starts with '-'
   if (Length(CurrentOpt) = 0) or (CurrentOpt[1] <> '-') then
   begin
-    SetError('Invalid argument format: ' + CurrentOpt);
+    // Not an option token; leave OptName empty to signal positional or leftover
+    OptName := '';
+    Result := True;
     Exit;
   end;
 
@@ -380,6 +425,15 @@ begin
   // Boolean options: present means true unless explicit value provided
   if FOptions[OptionIdx].ArgType = atBoolean then
   begin
+    // Support --no-<long> negation form
+    if (Pos('--no-', CurrentOpt) = 1) and (SameText(Copy(CurrentOpt, 6, MaxInt), FOptions[OptionIdx].LongOpt)) then
+    begin
+      Value.Bool := False;
+      HasValue := True;
+      Result := True;
+      Exit;
+    end;
+
     if HasValue then
     begin
       if not ParseValue(ValueStr, atBoolean, Value) then
@@ -539,6 +593,9 @@ var
   Value: TArgValue;
   HasValue: Boolean;
   ValueStr: string;
+  PosList: array of Integer;
+  pIdx: Integer;
+  j: Integer;
 begin
   // Ensure local Value is in a safe state so Finalize(Value) is always valid.
   FillChar(Value, 0, SizeOf(Value));
@@ -556,6 +613,27 @@ begin
 
   Initialize(Value);
   try
+    // Build ordered list of positional option indices (by PositionIndex)
+    SetLength(PosList, 0);
+    for j := 0 to High(FOptions) do
+      if FOptions[j].IsPositional then
+      begin
+        SetLength(PosList, Length(PosList) + 1);
+        PosList[High(PosList)] := j;
+      end;
+    // sort PosList by PositionIndex ascending (simple insertion sort)
+    for j := 1 to High(PosList) do
+    begin
+      pIdx := PosList[j];
+      i := j - 1;
+      while (i >= 0) and (FOptions[PosList[i]].PositionIndex > FOptions[pIdx].PositionIndex) do
+      begin
+        PosList[i+1] := PosList[i];
+        Dec(i);
+      end;
+      PosList[i+1] := pIdx;
+    end;
+    pIdx := 0; // pointer into PosList
     // Step 2: Walk through the arguments left-to-right
     i := Low(Args);
     while i <= High(Args) do
@@ -564,27 +642,119 @@ begin
       if not NormalizeToken(Args, i, OptName, HasValue, ValueStr) then
         Exit; // SetError was already called inside NormalizeToken
 
+      // If NormalizeToken left OptName empty, this is a positional or leftover token
+      if OptName = '' then
+      begin
+        // If we have a positional to fill, assign it
+        if (Length(PosList) > 0) and (pIdx <= High(PosList)) then
+        begin
+          OptionIdx := PosList[pIdx];
+          // prepare value string from current token; support greedy NArgs
+          HasValue := True;
+          ValueStr := Args[i];
+          if (FOptions[OptionIdx].NArgs = -1) and (FOptions[OptionIdx].ArgType in [atArray, atString]) then
+          begin
+            // collect subsequent non-option tokens as part of this positional
+            while (i < High(Args)) and (Length(Args[i+1])>0) and (Args[i+1][1] <> '-') do
+            begin
+              ValueStr := ValueStr + ',' + Args[i+1];
+              Inc(i);
+            end;
+          end;
+
+          // parse and append result for positional
+          Finalize(Value);
+          Value := FOptions[OptionIdx].DefaultValue;
+          if not ParseOptionValue(OptionIdx, HasValue, ValueStr, Args, i, Value, '--' + FOptions[OptionIdx].LongOpt) then
+            Exit;
+          RunCallbacks(OptionIdx, Value);
+          AppendResult(OptionIdx, Value);
+          Inc(pIdx);
+          Inc(i);
+          Continue;
+        end
+        else
+        begin
+          // No positional defined/left; treat as leftover if allowed
+          if FParseKnown then
+          begin
+            AppendLeftover(Args[i]);
+            Inc(i);
+            Continue;
+          end
+          else
+          begin
+            SetError('Unexpected positional token or stray argument: ' + Args[i]);
+            Exit;
+          end;
+        end;
+      end;
+
       // Step 3: Match the option definition
       OptionIdx := FindOption(OptName);
       if OptionIdx = -1 then
       begin
-        SetError('Unknown option: ' + OptName);
-        Exit;
+        if FParseKnown then
+        begin
+          AppendLeftover(OptName);
+          Inc(i);
+          Continue;
+        end
+        else
+        begin
+          SetError('Unknown option: ' + OptName);
+          Exit;
+        end;
       end;
 
       // Step 4: Start from defaults and parse the typed value
-      Finalize(Value); // discard any previous content
-      Value := FOptions[OptionIdx].DefaultValue; // also conveys the intended ArgType
+      // Start from defaults and parse
+      Finalize(Value);
+      Value := FOptions[OptionIdx].DefaultValue;
 
-      // 4.1 Parse the value and (for non-boolean) optionally consume the next arg
+      // If this option wants greedy collection (NArgs = -1) and is array or positional
+      if (FOptions[OptionIdx].NArgs = -1) and (FOptions[OptionIdx].ArgType in [atArray, atString]) then
+      begin
+        // collect subsequent non-option tokens into a comma-separated list for arrays
+        if (i < High(Args)) then
+        begin
+          // If inline value was provided, start with it
+          if HasValue and (ValueStr <> '') then
+          begin
+            // start with ValueStr
+          end
+          else
+          begin
+            // consume following tokens until one starts with '-'
+            while (i < High(Args)) and (Length(Args[i+1])>0) and (Args[i+1][1] <> '-') do
+            begin
+              if ValueStr = '' then
+                ValueStr := Args[i+1]
+              else
+                ValueStr := ValueStr + ',' + Args[i+1];
+              Inc(i);
+            end;
+            HasValue := ValueStr <> '';
+          end;
+        end;
+      end;
+
       if not ParseOptionValue(OptionIdx, HasValue, ValueStr, Args, i, Value, OptName) then
-        Exit; // SetError was already called inside ParseOptionValue
+        Exit;
 
-      // Step 5: Fire callbacks and store the result
+      // Step 5: Run callbacks
       RunCallbacks(OptionIdx, Value);
-      AppendResult(OptionIdx, Value);
 
-      // Advance to the next argument token
+      // If option allows multiple occurrences, always append a result; otherwise append as before
+      if FOptions[OptionIdx].AllowMultiple then
+        AppendResult(OptionIdx, Value)
+      else
+      begin
+        // Remove previous result for this option (if present) and append fresh
+        // We'll just append; GetX methods return the latest occurrence by scanning backwards
+        AppendResult(OptionIdx, Value);
+      end;
+
       Inc(i);
     end;
 
@@ -597,6 +767,12 @@ begin
   end;
 end;
 
+procedure TArgParser.ParseKnown(const Args: TStringDynArray; out Leftovers: TStringDynArray);
+begin
+  // Delegate to the public-friendly ParseKnownArgs implementation
+  ParseKnownArgs(Args, Leftovers);
+end;
+
 { Parse command-line arguments directly from ParamStr }
 procedure TArgParser.ParseCommandLine;
 var
@@ -604,6 +780,58 @@ var
 begin
   Args := ParamStrToArray;
   Parse(Args);
+end;
+
+procedure TArgParser.ParseCommandLineKnown(out Leftovers: TStringDynArray);
+var
+  Args: TStringDynArray;
+  i, dashIdx: Integer;
+  LeftArgs, RightArgs: TStringDynArray;
+begin
+  Args := ParamStrToArray;
+  dashIdx := -1;
+  for i := Low(Args) to High(Args) do
+    if Args[i] = '--' then
+    begin
+      dashIdx := i;
+      Break;
+    end;
+
+  if dashIdx >= 0 then
+  begin
+    if dashIdx > Low(Args) then
+    begin
+      SetLength(LeftArgs, dashIdx - Low(Args));
+      // copy elements safely
+      for i := 0 to Length(LeftArgs)-1 do
+        LeftArgs[i] := Args[Low(Args) + i];
+    end
+    else
+      LeftArgs := nil;
+
+    if dashIdx < High(Args) then
+    begin
+      SetLength(RightArgs, High(Args) - dashIdx);
+      for i := 0 to Length(RightArgs)-1 do
+        RightArgs[i] := Args[dashIdx + 1 + i];
+    end
+    else
+      RightArgs := nil;
+  end
+  else
+  begin
+    LeftArgs := Args;
+    RightArgs := nil;
+  end;
+
+  ParseKnownArgs(LeftArgs, Leftovers);
+
+  if Length(RightArgs) > 0 then
+  begin
+    SetLength(Leftovers, Length(Leftovers) + Length(RightArgs));
+    for i := 0 to High(RightArgs) do
+      Leftovers[High(Leftovers) - High(RightArgs) + i] := RightArgs[i];
+  end;
 end;
 
 procedure TArgParser.ShowHelp;
@@ -675,9 +903,18 @@ begin
 end;
 
 procedure TArgParser.AddOption(const Option: TArgOption);
+var
+  LOption: TArgOption;
 begin
   SetLength(FOptions, Length(FOptions) + 1);
-  FOptions[High(FOptions)] := Option;
+  // copy const param to local so we can set defaults
+  LOption := Option;
+  if not LOption.IsPositional then
+    LOption.PositionIndex := -1;
+  // ensure NArgs is defined (no-op, kept for clarity)
+  if LOption.NArgs = 0 then
+    LOption.NArgs := 0;
+  FOptions[High(FOptions)] := LOption;
 end;
 
 procedure TArgParser.AddString(const ShortOpt: Char; const LongOpt, HelpText: string;
@@ -757,6 +994,142 @@ begin
   DefaultValue.Arr := nil;
   
   Add(ShortOpt, LongOpt, atArray, HelpText, nil, nil, Required, DefaultValue);
+end;
+
+procedure TArgParser.AddPositional(const Name: string; const ArgType: TArgType; const HelpText: string; const Default: string = ''; const Required: Boolean = False; const NArgs: Integer = 0);
+var
+  Option: TArgOption;
+  DefaultValue: TArgValue;
+  idx: Integer;
+begin
+  // Prepare default value container
+  DefaultValue.ArgType := ArgType;
+  DefaultValue.Str := Default;
+  DefaultValue.Int := 0;
+  DefaultValue.Flt := 0.0;
+  DefaultValue.Bool := False;
+  DefaultValue.Arr := nil;
+
+  Option.ShortOpt := #0;
+  Option.LongOpt := Name;
+  Option.ArgType := ArgType;
+  Option.HelpText := HelpText;
+  Option.Callback := nil;
+  Option.CallbackClass := nil;
+  Option.Required := Required;
+  Option.DefaultValue := DefaultValue;
+  Option.IsPositional := True;
+  // PositionIndex: append at end
+  idx := 0;
+  for idx := 0 to High(FOptions) do ; // noop to find High
+  Option.PositionIndex := Length(FOptions); // next index
+  Option.AllowMultiple := False;
+  Option.NArgs := NArgs;
+
+  AddOption(Option);
+end;
+
+procedure TArgParser.AppendLeftover(const Token: string);
+begin
+  SetLength(FLeftovers, Length(FLeftovers) + 1);
+  FLeftovers[High(FLeftovers)] := Token;
+end;
+
+procedure TArgParser.ParseKnownArgs(const Args: TStringDynArray; out Leftovers: TStringDynArray);
+begin
+  FLeftovers := nil;
+  FParseKnown := True;
+  Parse(Args);
+  Leftovers := FLeftovers;
+  FParseKnown := False;
+end;
+
+function TArgParser.GetAllString(const LongOpt: string): TStringDynArray;
+var
+  i: Integer;
+  tmp: TStringDynArray;
+begin
+  SetLength(tmp, 0);
+  for i := Low(FResults) to High(FResults) do
+    if (FResults[i].Name = LongOpt) and (FResults[i].Value.ArgType = atString) then
+    begin
+      SetLength(tmp, Length(tmp) + 1);
+      tmp[High(tmp)] := FResults[i].Value.Str;
+    end;
+  Result := tmp;
+end;
+
+function TArgParser.GetAllInteger(const LongOpt: string): TIntegerDynArray;
+var
+  i: Integer;
+  tmp: TIntegerDynArray;
+begin
+  SetLength(tmp, 0);
+  for i := Low(FResults) to High(FResults) do
+    if (FResults[i].Name = LongOpt) and (FResults[i].Value.ArgType = atInteger) then
+    begin
+      SetLength(tmp, Length(tmp) + 1);
+      tmp[High(tmp)] := FResults[i].Value.Int;
+    end;
+  Result := tmp;
+end;
+
+function TArgParser.GetAllFloat(const LongOpt: string): TDoubleDynArray;
+var
+  i: Integer;
+  tmp: TDoubleDynArray;
+begin
+  SetLength(tmp, 0);
+  for i := Low(FResults) to High(FResults) do
+    if (FResults[i].Name = LongOpt) and (FResults[i].Value.ArgType = atFloat) then
+    begin
+      SetLength(tmp, Length(tmp) + 1);
+      tmp[High(tmp)] := FResults[i].Value.Flt;
+    end;
+  Result := tmp;
+end;
+
+function TArgParser.GetAllBoolean(const LongOpt: string): TBooleanDynArray;
+var
+  i, cnt: Integer;
+  tmp: TBooleanDynArray;
+begin
+  cnt := 0;
+  for i := Low(FResults) to High(FResults) do
+    if (FResults[i].Name = LongOpt) and (FResults[i].Value.ArgType = atBoolean) then
+      Inc(cnt);
+  SetLength(tmp, cnt);
+  cnt := 0;
+  for i := Low(FResults) to High(FResults) do
+    if (FResults[i].Name = LongOpt) and (FResults[i].Value.ArgType = atBoolean) then
+    begin
+      tmp[cnt] := FResults[i].Value.Bool;
+      Inc(cnt);
+    end;
+  Result := tmp;
+end;
+
+function TArgParser.GetAllArray(const LongOpt: string): TStringDynArrayArray;
+var
+  i, cnt: Integer;
+  tmp: TStringDynArrayArray;
+begin
+  cnt := 0;
+begin
+  cnt := 0;
+  for i := Low(FResults) to High(FResults) do
+    if (FResults[i].Name = LongOpt) and (FResults[i].Value.ArgType = atArray) then
+      Inc(cnt);
+  SetLength(tmp, cnt);
+  cnt := 0;
+  for i := Low(FResults) to High(FResults) do
+    if (FResults[i].Name = LongOpt) and (FResults[i].Value.ArgType = atArray) then
+    begin
+      tmp[cnt] := FResults[i].Value.Arr;
+      Inc(cnt);
+    end;
+  Result := tmp;
+end;
 end;
 
 procedure TArgParser.AddArray(const ShortOpt: Char; const LongOpt, HelpText: string; const DefaultArr: array of string; const Required: Boolean = False);
