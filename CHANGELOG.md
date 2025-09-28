@@ -26,6 +26,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - These changes are backward-compatible for most common use cases. Advanced callers that relied on positional arguments being accessible via `--name` should update their call sites to add an explicit option if they still need the named form.
 
 
+## [0.4.0] - 2025-09-28
+
+### Added (0.4.0)
+
+- Extracted tokenization into a dedicated `ArgTokenizer` unit and introduced focused unit tests for token shapes. This makes normalization rules (e.g., `--name=value`, positional marking, and raw-token preservation) easier to maintain and test.
+
+### Changed (0.4.0)
+
+- `Parse` now consumes token objects produced by `TokenizeArgs`, reducing complexity in `ArgParser.pas` and improving separation of concerns.
+
+### Notes (0.4.0)
+
+- This is a refactor-only change; behavior and public API are unchanged. Tests were added to ensure tokenization compatibility across common cases.
+
 ## [0.2.0] - 2025-09-27
 
 ### Fixed (0.2.0)

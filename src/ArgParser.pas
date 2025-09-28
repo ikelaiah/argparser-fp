@@ -14,7 +14,7 @@ unit ArgParser;
 interface
 
 uses
-  Classes, SysUtils, Types, StrUtils;
+  Classes, SysUtils, Types, StrUtils, ArgTokenizer;
 
 { TArgType: Enumeration of supported argument types. }
 type
@@ -97,9 +97,9 @@ type
     { Finalizes and clears FResults from any previous Parse run }
     procedure ClearPreviousResults;
     { Normalizes current token into (OptName, HasValue, ValueStr); supports --name=value, -n=value, -nvalue and the PowerShell split quirk }
-    function NormalizeToken(const Args: TStringDynArray; var i: Integer; out OptName: string; out HasValue: Boolean; out ValueStr: string): Boolean;
+  function NormalizeToken(const Args: TStringDynArray; var i: Integer; out OptName: string; out HasValue: Boolean; out ValueStr: string): Boolean;
     { Populates typed Value for the option; may consume next token; enforces required/empty rules and type parsing }
-    function ParseOptionValue(const OptionIdx: Integer; var HasValue: Boolean; var ValueStr: string; const Args: TStringDynArray; var i: Integer; var Value: TArgValue; const CurrentOpt: string): Boolean;
+  function ParseOptionValue(const OptionIdx: Integer; var HasValue: Boolean; var ValueStr: string; const Tokens: TArgTokenArray; var tIdx: Integer; var Value: TArgValue; const CurrentOpt: string): Boolean;
     { Invokes any registered callbacks for this option }
     procedure RunCallbacks(const OptionIdx: Integer; const Value: TArgValue);
     { Appends the parsed (Name, Value) pair to FResults }
@@ -108,8 +108,8 @@ type
     { Ensures all options marked Required=True were provided at least once }
     function CheckRequiredOptionsPresent: Boolean;
     { Parse the provided command-line arguments array. }
-    procedure Parse(const Args: TStringDynArray);
-    procedure ParseKnown(const Args: TStringDynArray; out Leftovers: TStringDynArray);
+  procedure Parse(const Args: TStringDynArray);
+  procedure ParseKnown(const Args: TStringDynArray; out Leftovers: TStringDynArray);
   public
     { Initialize parser state. Call before adding any options. }
     procedure Init;
@@ -409,7 +409,7 @@ begin
   Result := True;
 end;
 
-function TArgParser.ParseOptionValue(const OptionIdx: Integer; var HasValue: Boolean; var ValueStr: string; const Args: TStringDynArray; var i: Integer; var Value: TArgValue; const CurrentOpt: string): Boolean;
+function TArgParser.ParseOptionValue(const OptionIdx: Integer; var HasValue: Boolean; var ValueStr: string; const Tokens: TArgTokenArray; var tIdx: Integer; var Value: TArgValue; const CurrentOpt: string): Boolean;
 begin
   { Based on option type and HasValue/ValueStr, populate Value.
     - Booleans: presence implies True unless an explicit value is provided.
@@ -462,9 +462,9 @@ begin
       Exit;
     end;
   end
-  else if (i < High(Args)) and ((Length(Args[i+1]) = 0) or (Args[i+1][1] <> '-')) then
+  else if (tIdx < High(Tokens)) and (Tokens[tIdx+1].Kind = tkPositional) then
   begin
-    ValueStr := Args[i+1];
+    ValueStr := Tokens[tIdx+1].ValueStr;
     if FOptions[OptionIdx].Required and (FOptions[OptionIdx].ArgType = atString) and (ValueStr = '') then
     begin
       SetError('Empty value not allowed for required option: ' + CurrentOpt);
@@ -476,7 +476,7 @@ begin
       Exit;
     end;
     HasValue := True;
-    Inc(i);
+    Inc(tIdx);
   end;
 
   // Required non-boolean missing value
@@ -593,6 +593,9 @@ var
   PosList: array of Integer;
   pIdx: Integer;
   j: Integer;
+  Tokens: TArgTokenArray;
+  tIdx: Integer;
+  Tok: TArgToken;
 begin
   // Ensure local Value is in a safe state so Finalize(Value) is always valid.
   FillChar(Value, 0, SizeOf(Value));
@@ -610,7 +613,7 @@ begin
 
   Initialize(Value);
   try
-    // Build ordered list of positional option indices (by PositionIndex)
+  // Build ordered list of positional option indices (by PositionIndex)
     SetLength(PosList, 0);
     for j := 0 to High(FOptions) do
       if FOptions[j].IsPositional then
@@ -631,16 +634,18 @@ begin
       PosList[i+1] := pIdx;
     end;
     pIdx := 0; // pointer into PosList
-    // Step 2: Walk through the arguments left-to-right
-    i := Low(Args);
-    while i <= High(Args) do
+    // Tokenize input and iterate tokens
+    Tokens := TokenizeArgs(Args);
+    tIdx := Low(Tokens);
+    while tIdx <= High(Tokens) do
     begin
-      // 2.1 Normalize the current token -> OptName, HasValue, ValueStr
-      if not NormalizeToken(Args, i, OptName, HasValue, ValueStr) then
-        Exit; // SetError was already called inside NormalizeToken
+      Tok := Tokens[tIdx];
+      OptName := Tok.OptName;
+      HasValue := Tok.HasValue;
+      ValueStr := Tok.ValueStr;
 
       // If NormalizeToken left OptName empty, this is a positional or leftover token
-      if OptName = '' then
+      if (OptName = '') and (Tok.Kind = tkPositional) then
       begin
         // If we have a positional to fill, assign it
         if (Length(PosList) > 0) and (pIdx <= High(PosList)) then
@@ -648,26 +653,26 @@ begin
           OptionIdx := PosList[pIdx];
           // prepare value string from current token; support greedy NArgs
           HasValue := True;
-          ValueStr := Args[i];
+          ValueStr := Tok.ValueStr;
           if (FOptions[OptionIdx].NArgs = -1) and (FOptions[OptionIdx].ArgType in [atArray, atString]) then
           begin
             // collect subsequent non-option tokens as part of this positional
-            while (i < High(Args)) and (Length(Args[i+1])>0) and (Args[i+1][1] <> '-') do
+            while (tIdx < High(Tokens)) and (Tokens[tIdx+1].Kind = tkPositional) do
             begin
-              ValueStr := ValueStr + ',' + Args[i+1];
-              Inc(i);
+              ValueStr := ValueStr + ',' + Tokens[tIdx+1].ValueStr;
+              Inc(tIdx);
             end;
           end;
 
           // parse and append result for positional
           Finalize(Value);
           Value := FOptions[OptionIdx].DefaultValue;
-          if not ParseOptionValue(OptionIdx, HasValue, ValueStr, Args, i, Value, '--' + FOptions[OptionIdx].LongOpt) then
+          if not ParseOptionValue(OptionIdx, HasValue, ValueStr, Tokens, tIdx, Value, '--' + FOptions[OptionIdx].LongOpt) then
             Exit;
           RunCallbacks(OptionIdx, Value);
           AppendResult(OptionIdx, Value);
           Inc(pIdx);
-          Inc(i);
+          Inc(tIdx);
           Continue;
         end
         else
@@ -675,13 +680,13 @@ begin
           // No positional defined/left; treat as leftover if allowed
           if FParseKnown then
           begin
-            AppendLeftover(Args[i]);
-            Inc(i);
+            AppendLeftover(Tok.Raw);
+            Inc(tIdx);
             Continue;
           end
           else
           begin
-            SetError('Unexpected positional token or stray argument: ' + Args[i]);
+            SetError('Unexpected positional token or stray argument: ' + Tok.Raw);
             Exit;
           end;
         end;
@@ -693,13 +698,13 @@ begin
       begin
         if FParseKnown then
         begin
-          AppendLeftover(OptName);
-          Inc(i);
+          AppendLeftover(Tok.Raw);
+          Inc(tIdx);
           Continue;
         end
         else
         begin
-          SetError('Unknown option: ' + OptName);
+          SetError('Unknown option: ' + Tok.Raw);
           Exit;
         end;
       end;
@@ -712,31 +717,25 @@ begin
       // If this option wants greedy collection (NArgs = -1) and is array or positional
       if (FOptions[OptionIdx].NArgs = -1) and (FOptions[OptionIdx].ArgType in [atArray, atString]) then
       begin
-        // collect subsequent non-option tokens into a comma-separated list for arrays
-        if (i < High(Args)) then
+        // collect subsequent positional tokens into a comma-separated list
+        if (tIdx < High(Tokens)) then
         begin
-          // If inline value was provided, start with it
-          if HasValue and (ValueStr <> '') then
+          if not HasValue then
           begin
-            // start with ValueStr
-          end
-          else
-          begin
-            // consume following tokens until one starts with '-'
-            while (i < High(Args)) and (Length(Args[i+1])>0) and (Args[i+1][1] <> '-') do
+            while (tIdx < High(Tokens)) and (Tokens[tIdx+1].Kind = tkPositional) do
             begin
               if ValueStr = '' then
-                ValueStr := Args[i+1]
+                ValueStr := Tokens[tIdx+1].ValueStr
               else
-                ValueStr := ValueStr + ',' + Args[i+1];
-              Inc(i);
+                ValueStr := ValueStr + ',' + Tokens[tIdx+1].ValueStr;
+              Inc(tIdx);
             end;
             HasValue := ValueStr <> '';
           end;
         end;
       end;
 
-      if not ParseOptionValue(OptionIdx, HasValue, ValueStr, Args, i, Value, OptName) then
+      if not ParseOptionValue(OptionIdx, HasValue, ValueStr, Tokens, tIdx, Value, Tok.Raw) then
         Exit;
 
       // Step 5: Run callbacks
@@ -752,7 +751,7 @@ begin
         AppendResult(OptionIdx, Value);
       end;
 
-      Inc(i);
+      Inc(tIdx);
     end;
 
     // Step 6: Ensure all required options were provided

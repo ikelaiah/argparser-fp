@@ -279,6 +279,10 @@ end.
 - **Double-dash (`--`) and leftovers**
   - `ParseCommandLine` now supports a `--` separator. Tokens after `--` are not parsed as options and are returned via the `Leftovers` property so callers can forward them to subcommands or handle them specially.
 
+### Tokenizer extraction (v0.4.0)
+
+To make normalization logic easier to test and maintain, tokenization has been extracted into `ArgTokenizer.pas` (v0.4.0). The tokenizer produces a small token array that the parser consumes. Focused unit tests (`tests/ArgTokenizer.Test.pas`) validate common token shapes such as `--name=value`, positional tokens, and preservation of raw tokens for edge-case handling.
+
 - **PowerShell compatibility**
   - Some shells (notably PowerShell) can split concatenated short string values such as `-finput.txt` into two tokens: `-finput` and `.txt`.
   - The parser detects this for string options and reattaches the following token if it begins with `.`. Example:

@@ -210,6 +210,8 @@ For detailed documentation on all available procedures and functions, please see
 ```bash
 cd tests
 ./TestRunner.exe -a --format=plain
+
+Note: v0.4.0 introduced a dedicated `ArgTokenizer` unit and focused tokenizer unit tests (`tests/ArgTokenizer.Test.pas`) to validate token shapes and normalization rules.
 ```
 
 ## 🤝 Contributing

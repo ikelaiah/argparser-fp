@@ -122,6 +122,8 @@ Command: mytool -finput .txt  # PowerShell may split short string values
 Args    = ["-finput", ".txt"]  # parser reattaches → value "input.txt"
 ```
 
+Note: In v0.4.0 tokenization was moved into a dedicated `ArgTokenizer` unit and covered by focused unit tests. This ensures token shapes are consistent and easier to test.
+
 ## ⚙️ API Quick Reference
 
 ### 1. Initialization

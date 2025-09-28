@@ -5,8 +5,8 @@ program TestRunner;
 uses
   Classes
   , consoletestrunner
-  , ArgParser.Test;
-
+  , ArgParser.Test
+  , ArgTokenizer.Test;
 
 type
 
