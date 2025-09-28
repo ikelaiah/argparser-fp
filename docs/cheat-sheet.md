@@ -124,6 +124,17 @@ Args    = ["-finput", ".txt"]  # parser reattaches → value "input.txt"
 
 Note: In v0.4.0 tokenization was moved into a dedicated `ArgTokenizer` unit and covered by focused unit tests. This ensures token shapes are consistent and easier to test.
 
+## Testing
+
+From the repository root run the test runner (PowerShell example):
+
+```powershell
+cd .\tests
+.\TestRunner.exe -a --format=plain
+```
+
+The test suite includes `tests/ArgTokenizer.Test.pas` which validates token shapes and the `SplitCombinedShorts` behavior.
+
 ## ⚙️ API Quick Reference
 
 ### 1. Initialization
@@ -303,3 +314,9 @@ You can customize the usage banner shown by `ShowHelp` and `ShowUsage`. This is 
 Parser.Init;
 Parser.SetUsage('Usage: myapp [options] <source> <destination>');
 ```
+
+Note (v0.4.0): tokenization was extracted to `ArgTokenizer.pas`. The boolean
+`SplitCombinedShorts` (default: True) controls whether small all-alpha groups like `-abc`
+are split into separate tokens. Mixed or numeric groups such as `-a1b` are preserved.
+
+Short-inline values such as `-finput.txt` are tokenized as `-f` + positional `input.txt`. On PowerShell the shell can split this into `-finput` and `.txt`; the tokenizer reattaches the `.txt` part for string options.

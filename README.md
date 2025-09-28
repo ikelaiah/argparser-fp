@@ -4,12 +4,12 @@
 [![Lazarus](https://img.shields.io/badge/Lazarus-4.0+-blue.svg)](https://www.lazarus-ide.org/)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE.md)
 [![Documentation](https://img.shields.io/badge/Docs-Available-brightgreen.svg)](docs/)
-[![Version](https://img.shields.io/badge/Version-0.2.0-blueviolet.svg)](https://github.com/ikelaiah/argparser-fp/releases)
+[![Version](https://img.shields.io/badge/Version-0.4.0-blueviolet.svg)](https://github.com/ikelaiah/argparser-fp/releases)
 
 A lightweight, record-based command-line argument parser for Free Pascal. `ArgParser-FP` is designed for small to medium console applications, offering a clean API to handle arguments with minimal setup.
 
-> [!WARNING]  
-> This library is curently in active development. While it is functional and has been tested, some features may change in future releases. Please review the [Changelog](CHANGELOG.md) for the latest updates.
+> [!WARNING]
+> This library is currently in active development. While it is functional and has been tested, some features may change in future releases. Please review the [Changelog](CHANGELOG.md) for the latest updates.
 
 ## ✨ Features
 
@@ -91,12 +91,13 @@ end.
 Compile and run the application with --help to see the auto-generated documentation:
 
 ```bash
-$ fpc MyApp.pas
-$ ./MyApp --help
+fpc MyApp.pas
+./MyApp --help
+```
 
-**Output**
+Output:
 
-```bash
+```text
 Usage: MyApp [options]
 
 Options:
@@ -105,24 +106,22 @@ Options:
   -v, --verbose  Enable verbose mode
   -f, --file     Specify a file path
   -t, --tags     Comma-separated list of tags
-  -h, --help     Show this help message
 ```
 
 Example Usage
 
 ```bash
-  
-  
 # Traditional format
-$ ./MyApp --file input.txt --count 10 --verbose
+./MyApp --file input.txt --count 10 --verbose
 
-  
-# New equals format
-$ ./MyApp --file=input.txt --count=10 --verbose=true
+# Equals format
+./MyApp --file=input.txt --count=10 --verbose=true
 
 # Mixed formats
-**Additional notes**
+./MyApp --file=input.txt -v --count 10
 ```
+
+Additional notes: quote arguments containing spaces according to your shell's rules.
 
 ## ⚠️ Common Pitfalls
 
@@ -133,8 +132,8 @@ $ ./MyApp --file=input.txt --count=10 --verbose=true
   - Presence sets to true: `--verbose` ⇒ true.
   - If you need an explicit value, use `--verbose=true|false` or `-v=false`. Writing `--verbose false` treats `false` as a separate token and will fail.
 
-- **Short options aren’t chained**
-  - `-abc` is parsed as `-a` with value `bc`, not three flags. Pass them separately (`-a -b -c`) or use long options.
+- **Short combined flags**
+  - The tokenizer's default policy (controlled by `SplitCombinedShorts` in `src/ArgTokenizer.pas`) will split small all-alpha combined shorts like `-abc` into separate flags `-a -b -c`. Mixed or numeric groups (for example `-a1b`) are preserved as a single token. Set `SplitCombinedShorts := False` if you prefer conservative behavior.
 
 - **PowerShell split quirk (Windows)**
   - PowerShell may split `-finput.txt` into two tokens: `-finput` and `.txt`. The parser reattaches `.txt` for string options so the value becomes `input.txt`.
@@ -184,7 +183,7 @@ For deeper details and examples, see the [Beginner's Guide](docs/ArgParser.md#9-
 
 ## 📦 Installation
 
-1. Copy `src/ArgParser.pas` into your project folder.
+1. Copy the `src/` files (at least `src/ArgParser.pas` and `src/ArgTokenizer.pas`) into your project folder or add the `src/` folder to your build path.
 2. Add `ArgParser` to your program's `uses` clause.
 3. Compile with FPC:
 
@@ -210,9 +209,9 @@ For detailed documentation on all available procedures and functions, please see
 ```bash
 cd tests
 ./TestRunner.exe -a --format=plain
+```
 
 Note: v0.4.0 introduced a dedicated `ArgTokenizer` unit and focused tokenizer unit tests (`tests/ArgTokenizer.Test.pas`) to validate token shapes and normalization rules.
-```
 
 ## 🤝 Contributing
 
@@ -228,15 +227,6 @@ Contributions are welcome! Please feel free to submit a Pull Request. For major 
 
 This project is licensed under the MIT License - see the [LICENSE.md](LICENSE.md) file for details.
 
-## Release 0.2.0 — notes
-
-This minor release focuses on code quality and developer ergonomics:
-
-- Add a fast option lookup map (`FLookup`) to speed option resolution and centralize option registration.
-- Positionals are now strictly positional by default: `AddPositional` arguments are matched only by position and are not automatically available as `--name` switches. If you need a positional that is also accessible via a switch, use a future helper `AddPositionalAsNamed` (not present in 0.2.0) or add both an option and a positional.
-- Documentation updates (cheat-sheet and beginner's guide) to clarify behavior and edge cases.
-
-These changes are backwards-compatible for common usage patterns; they mainly affect advanced edge cases where a positional had previously been accessible via `--name`.
 
 ## 🙏 Acknowledgments
 

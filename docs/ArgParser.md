@@ -30,9 +30,20 @@ Ideal for small to medium Pascal programs.
 
 3. Compile with FPC:
 
-   ```bash
-   fpc MyProgram.pas
-   ```
+## Tokenizer extraction (v0.4.0)
+
+The parser's tokenization logic has been extracted into `ArgTokenizer.pas`.
+This makes it easier to reason about token shapes such as `--name=value`, short
+inline values (`-finput`), and combined short flags (`-abc`). The tokenizer
+behavior is controlled by `SplitCombinedShorts` (in `src/ArgTokenizer.pas`,
+default: True) which determines whether small all-alpha groups like `-abc` are
+split into `-a -b -c` or treated as a short plus remainder (e.g. `-a` + `bc`).
+
+To compile your program with FPC:
+
+```bash
+fpc MyProgram.pas
+```
 
 ---
 
@@ -279,7 +290,7 @@ end.
 - **Double-dash (`--`) and leftovers**
   - `ParseCommandLine` now supports a `--` separator. Tokens after `--` are not parsed as options and are returned via the `Leftovers` property so callers can forward them to subcommands or handle them specially.
 
-### Tokenizer extraction (v0.4.0)
+### Tokenizer and compatibility (v0.4.0)
 
 To make normalization logic easier to test and maintain, tokenization has been extracted into `ArgTokenizer.pas` (v0.4.0). The tokenizer produces a small token array that the parser consumes. Focused unit tests (`tests/ArgTokenizer.Test.pas`) validate common token shapes such as `--name=value`, positional tokens, and preservation of raw tokens for edge-case handling.
 

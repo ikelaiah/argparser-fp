@@ -35,6 +35,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed (0.4.0)
 
 - `Parse` now consumes token objects produced by `TokenizeArgs`, reducing complexity in `ArgParser.pas` and improving separation of concerns.
+- Added `SplitCombinedShorts` configuration to `ArgTokenizer.pas` to control how short groups like `-abc` are handled (split into separate flags vs inline remainder).
+
+### Notes (0.4.0)
+
+- Tests added for tokenizer edge-cases (combined shorts, short-inline values, PowerShell '.'-append quirk).
+
+### Changed (0.4.0)
+
+- `Parse` now consumes token objects produced by `TokenizeArgs`, reducing complexity in `ArgParser.pas` and improving separation of concerns.
 
 ### Notes (0.4.0)
 

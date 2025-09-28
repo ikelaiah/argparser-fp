@@ -7,6 +7,10 @@ interface
 uses
   Classes, SysUtils, Types;
 
+var
+  // If True, small combined short flags like -abc are split into -a -b -c
+  SplitCombinedShorts: Boolean = True;
+
 type
   TArgTokenKind = (tkOption, tkPositional);
 
@@ -35,10 +39,14 @@ var
   i, p: Integer;
   s: string;
   t: TArgToken;
+  rem: string;
+  j, n: Integer;
+  allLetters: Boolean;
 begin
   SetLength(Result, 0);
   if Length(Args) = 0 then Exit;
-  for i := Low(Args) to High(Args) do
+  i := Low(Args);
+  while i <= High(Args) do
   begin
     s := Args[i];
     t.Raw := s;
@@ -55,11 +63,96 @@ begin
         t.OptName := Copy(s, 1, p-1);
         t.HasValue := True;
         t.ValueStr := Copy(s, p+1, MaxInt);
+        // add as single token
+        SetLength(Result, Length(Result) + 1);
+        Result[High(Result)] := t;
+        Inc(i);
+        Continue;
       end
       else
       begin
-        t.Kind := tkOption;
-        t.OptName := s;
+        // Handle single-dash combined short flags and short-inline values
+        if (Length(s) > 2) and (s[2] <> '-') then
+        begin
+          // number of chars after '-'
+          n := Length(s) - 1;
+          // consider splitting into single-letter flags when small group (<=3)
+          allLetters := True;
+          for j := 2 to Length(s) do
+            if not (s[j] in ['A'..'Z', 'a'..'z']) then
+            begin
+              allLetters := False;
+              Break;
+            end;
+          if allLetters and (n <= 3) then
+          begin
+            // split into multiple single-letter option tokens: -a -b -c
+            for j := 2 to Length(s) do
+            begin
+              t.Kind := tkOption;
+              t.OptName := '-' + s[j];
+              t.HasValue := False;
+              t.ValueStr := '';
+              t.Raw := t.OptName;
+              SetLength(Result, Length(Result) + 1);
+              Result[High(Result)] := t;
+            end;
+            Inc(i);
+            Continue;
+          end
+          else
+          begin
+            // Decide whether this is a short option with an inline remainder
+            // or a mixed/numeric combined token that should be preserved.
+            // Treat as inline when either all letters (handled above for small groups)
+            // or when the third character is a letter (e.g. '-finput').
+            if allLetters or ((Length(s) >= 3) and (s[3] in ['A'..'Z', 'a'..'z'])) then
+            begin
+              // treat as short option with inline value: '-finput' -> '-f' and positional 'input'
+              t.Kind := tkOption;
+              t.OptName := '-' + s[2];
+              t.HasValue := False;
+              t.ValueStr := '';
+              t.Raw := t.OptName;
+              SetLength(Result, Length(Result) + 1);
+              Result[High(Result)] := t;
+              // remainder becomes a positional token (value)
+              rem := Copy(s, 3, MaxInt);
+              // PowerShell quirk: if next token starts with '.' append it
+              if (i < High(Args)) and (Length(Args[i+1]) > 0) and (Args[i+1][1] = '.') then
+                rem := rem + Args[i+1];
+              t.Kind := tkPositional;
+              t.Raw := rem;
+              t.ValueStr := rem;
+              t.OptName := '';
+              t.HasValue := True;
+              SetLength(Result, Length(Result) + 1);
+              Result[High(Result)] := t;
+              // advance by 1 (current) plus one more if we appended next token
+              if (i < High(Args)) and (Length(Args[i+1]) > 0) and (Args[i+1][1] = '.') then
+                Inc(i, 2)
+              else
+                Inc(i);
+              Continue;
+            end
+            else
+            begin
+              // Mixed or numeric combined shorts should be preserved as a single token
+              t.Kind := tkOption;
+              t.OptName := s;
+              t.Raw := s;
+              SetLength(Result, Length(Result) + 1);
+              Result[High(Result)] := t;
+              Inc(i);
+              Continue;
+            end;
+          end;
+        end
+        else
+        begin
+          t.Kind := tkOption;
+          t.OptName := s;
+        end;
       end;
     end
     else
@@ -70,6 +163,7 @@ begin
     end;
     SetLength(Result, Length(Result) + 1);
     Result[High(Result)] := t;
+    Inc(i);
   end;
 end;
 
