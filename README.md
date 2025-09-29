@@ -138,6 +138,14 @@ Additional notes: quote arguments containing spaces according to your shell's ru
 - **PowerShell split quirk (Windows)**
   - PowerShell may split `-finput.txt` into two tokens: `-finput` and `.txt`. The parser reattaches `.txt` for string options so the value becomes `input.txt`.
 
+- **Single dash and negative numbers**
+  - A single dash token `-` is preserved as a positional token (commonly used to mean stdin). Numeric tokens that start with `-` such as `-1` are treated as positional values unless an option matching that token exists.
+
+  Examples:
+
+  - Read from stdin: mytool - input.txt   # '-' preserved as a positional (stdin)
+  - Negative numeric positional: mytool process -1  # '-1' is a positional value, not an option
+
 - **Arrays are comma-separated**
   - Use a single token like `--list=a,b,c`. If values contain spaces, quote according to your shell.
 

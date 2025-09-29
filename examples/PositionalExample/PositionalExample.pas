@@ -34,11 +34,15 @@ begin
     // Define a greedy positional 'files' that consumes the rest when present
     P.AddPositional('files', atArray, 'Files to process', '', True, -1);
     P.AddBoolean('v','verbose','Enable verbose mode');
+    P.AddBoolean('h','help','Show this help message');
 
-  // Parse the program command-line and collect leftovers (tokens after `--` are included)
-  // New simpler API: ParseCommandLine automatically supports `--` and leftovers
-  P.ParseCommandLine;
-  leftovers := P.Leftovers;
+    // Parse the program command-line and collect arguments and leftovers
+    P.ParseCommandLine;
+
+    // Parse the program command-line and collect leftovers (tokens after `--` are included)
+    // New simpler API: ParseCommandLine automatically supports `--` and leftovers
+    P.ParseCommandLine;
+    leftovers := P.Leftovers;
 
     // Handle errors or help requests first
     if P.HasError then

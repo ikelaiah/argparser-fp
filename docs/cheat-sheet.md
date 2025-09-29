@@ -130,6 +130,13 @@ Note (v0.5.0):
 - `SetAllowMultiple(const LongOpt: string; const Value: Boolean)` lets you enable accumulation for an existing option at runtime (useful in code that wants to allow repeated flags without redefining options).
 - Additional tests were added to `tests/ArgTokenizer.Test.pas` and `tests/ArgParser.Test.pas` to cover PowerShell '.' reattachment, single `-` handling, negative numbers, equals-style `--name=value`, the `--` separator (leftovers), and repeated option accumulation.
 
+Note: single dash token `-` is preserved as a positional token (commonly used to mean stdin). Numeric tokens that start with `-` (for example `-1`) are treated as positionals unless an option matching that token is defined.
+
+Examples:
+
+- Read from stdin: mytool - input.txt   # '-' preserved as a positional (stdin)
+- Negative numeric positional: mytool process -1  # '-1' is a positional value, not an option
+
 ## Testing
 
 From the repository root run the test runner (PowerShell example):
