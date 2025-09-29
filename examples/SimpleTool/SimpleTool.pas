@@ -11,16 +11,23 @@ var
 begin
   // 1. Initialize the parser
   Parser.Init;
-  Parser.SetUsage('Usage: mytool [options] <input-file>');
+  Parser.SetUsage('mytool [options] <input-file>');
 
   // 2. Define options
+  Parser.AddBoolean('h', 'help', 'Show this help message');
   Parser.AddString('i', 'input', 'Input file path', '', True);
   Parser.AddBoolean('v', 'verbose', 'Enable verbose output');
 
   // 3. Parse arguments
   Parser.ParseCommandLine;
 
-  // 4. Handle errors or help
+  // 4. Handle help and errors
+  if Parser.GetBoolean('help') then
+  begin
+    Parser.ShowHelp;
+    Exit;
+  end;
+
   if Parser.HasError then
   begin
     WriteLn('Error: ', Parser.Error);
@@ -28,11 +35,7 @@ begin
     Exit;
   end;
 
-  if Parser.GetBoolean('help') then
-  begin
-    Parser.ShowHelp;
-    Exit;
-  end;
+
 
   // 5. Access parsed values
   InputFile := Parser.GetString('input');

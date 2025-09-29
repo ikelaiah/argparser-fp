@@ -1,4 +1,3 @@
-
 //-------------------------------------------------------------------------------
 // Unit: ArgParser
 //
@@ -898,6 +897,7 @@ var
   i: Integer;
   MaxShort, MaxLong: Integer;
   Seen: TStringList;
+  OptHelp, PosHelp: string;
 begin
   { Calculate max widths for formatting }
   MaxShort := 1;  // ShortOpt is always a single character
@@ -951,7 +951,11 @@ begin
       Write('--' + FOptions[i].LongOpt);
       Write(Space(MaxLong - Length(FOptions[i].LongOpt)));
       Write('  ');
-      WriteLn(FOptions[i].HelpText);
+      // Append "(required)" to help text for required options
+      OptHelp := FOptions[i].HelpText;
+      if FOptions[i].Required then
+        OptHelp := OptHelp + ' (required)';
+      WriteLn(OptHelp);
     end;
   finally
     Seen.Free;
@@ -992,7 +996,11 @@ begin
       Write(FOptions[i].LongOpt);
       Write(Space(MaxLong - Length(FOptions[i].LongOpt)));
       Write('  ');
-      WriteLn(FOptions[i].HelpText);
+      // Append "(required)" for required positionals
+      PosHelp := FOptions[i].HelpText;
+      if FOptions[i].Required then
+        PosHelp := PosHelp + ' (required)';
+      WriteLn(PosHelp);
     end;
   finally
     Seen.Free;
