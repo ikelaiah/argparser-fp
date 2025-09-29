@@ -897,6 +897,7 @@ procedure TArgParser.ShowHelp;
 var
   i: Integer;
   MaxShort, MaxLong: Integer;
+  Seen: TStringList;
 begin
   { Calculate max widths for formatting }
   MaxShort := 1;  // ShortOpt is always a single character
@@ -918,22 +919,42 @@ begin
   WriteLn('Usage: ' + FUsage);
   WriteLn;
   WriteLn('Options:');
-  for i := Low(FOptions) to High(FOptions) do
-  begin
-    if FOptions[i].IsPositional then
-      Continue; // skip positionals in the Options section
+  Seen := TStringList.Create;
+  try
+    Seen.CaseSensitive := False;
+    for i := Low(FOptions) to High(FOptions) do
+    begin
+      if FOptions[i].IsPositional then
+        Continue; // skip positionals in the Options section
 
-    Write('  ');
-    // Only print short option if defined (non-zero char).
-    if FOptions[i].ShortOpt <> #0 then
-      Write('-' + FOptions[i].ShortOpt + ', ')
-    else
-      Write('    '); // spaces to align when no short option
+      // If we've already printed this long option (or short if long is empty), skip
+      if (FOptions[i].LongOpt <> '') then
+      begin
+        if Seen.IndexOf('--' + FOptions[i].LongOpt) >= 0 then
+          Continue;
+        Seen.Add('--' + FOptions[i].LongOpt);
+      end
+      else if FOptions[i].ShortOpt <> #0 then
+      begin
+        if Seen.IndexOf('-' + FOptions[i].ShortOpt) >= 0 then
+          Continue;
+        Seen.Add('-' + FOptions[i].ShortOpt);
+      end;
 
-    Write('--' + FOptions[i].LongOpt);
-    Write(Space(MaxLong - Length(FOptions[i].LongOpt)));
-    Write('  ');
-    WriteLn(FOptions[i].HelpText);
+      Write('  ');
+      // Only print short option if defined (non-zero char).
+      if FOptions[i].ShortOpt <> #0 then
+        Write('-' + FOptions[i].ShortOpt + ', ')
+      else
+        Write('    '); // spaces to align when no short option
+
+      Write('--' + FOptions[i].LongOpt);
+      Write(Space(MaxLong - Length(FOptions[i].LongOpt)));
+      Write('  ');
+      WriteLn(FOptions[i].HelpText);
+    end;
+  finally
+    Seen.Free;
   end;
 
   { Print positional arguments separately to avoid showing them as `--name` }
@@ -953,17 +974,28 @@ begin
       if Length(FOptions[i].LongOpt) > MaxLong then
         MaxLong := Length(FOptions[i].LongOpt);
 
-  for i := Low(FOptions) to High(FOptions) do
-  begin
-    if not FOptions[i].IsPositional then
-      Continue;
+  // Dedupe positionals too (in case registration was duplicated)
+  Seen := TStringList.Create;
+  try
+    Seen.CaseSensitive := False;
+    for i := Low(FOptions) to High(FOptions) do
+    begin
+      if not FOptions[i].IsPositional then
+        Continue;
 
-    Write('  ');
-    // Print positional name without dashes
-    Write(FOptions[i].LongOpt);
-    Write(Space(MaxLong - Length(FOptions[i].LongOpt)));
-    Write('  ');
-    WriteLn(FOptions[i].HelpText);
+      if Seen.IndexOf(FOptions[i].LongOpt) >= 0 then
+        Continue;
+      Seen.Add(FOptions[i].LongOpt);
+
+      Write('  ');
+      // Print positional name without dashes
+      Write(FOptions[i].LongOpt);
+      Write(Space(MaxLong - Length(FOptions[i].LongOpt)));
+      Write('  ');
+      WriteLn(FOptions[i].HelpText);
+    end;
+  finally
+    Seen.Free;
   end;
 
   Done;
