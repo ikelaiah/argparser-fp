@@ -36,25 +36,25 @@ begin
     P.AddBoolean('v','verbose','Enable verbose mode');
     P.AddBoolean('h','help','Show this help message');
 
-    // Parse the program command-line and collect arguments and leftovers
-    P.ParseCommandLine;
+  // Parse the program command-line and collect leftovers (tokens after `--` are included)
+  // New simpler API: ParseCommandLine automatically supports `--` and leftovers
+  P.ParseCommandLine;
+  leftovers := P.Leftovers;
 
-    // Parse the program command-line and collect leftovers (tokens after `--` are included)
-    // New simpler API: ParseCommandLine automatically supports `--` and leftovers
-    P.ParseCommandLine;
-    leftovers := P.Leftovers;
+    // Handle help requests first so help can be displayed even when required
+    // positionals/options are missing (e.g. `-h` should not trigger "missing"
+    // errors).
+    if P.GetBoolean('help') then
+    begin
+      P.ShowHelp;
+      Exit;
+    end;
 
-    // Handle errors or help requests first
+    // Handle parse errors after help handling
     if P.HasError then
     begin
       Writeln('Error: ', P.Error);
       P.ShowUsage;
-      Exit;
-    end;
-
-    if P.GetBoolean('help') then
-    begin
-      P.ShowHelp;
       Exit;
     end;
 

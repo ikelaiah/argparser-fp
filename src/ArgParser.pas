@@ -901,27 +901,66 @@ begin
   { Calculate max widths for formatting }
   MaxShort := 1;  // ShortOpt is always a single character
   MaxLong := 0;
+  // Compute max width for long option names and positional names separately
   for i := Low(FOptions) to High(FOptions) do
   begin
-    if Length(FOptions[i].LongOpt) > MaxLong then
-      MaxLong := Length(FOptions[i].LongOpt);
+    if not FOptions[i].IsPositional then
+    begin
+      if Length(FOptions[i].LongOpt) > MaxLong then
+        MaxLong := Length(FOptions[i].LongOpt);
+    end
+    else
+    begin
+      // positionals will be handled later; keep MaxLong for options
+    end;
   end;
   
   WriteLn('Usage: ' + FUsage);
   WriteLn;
   WriteLn('Options:');
-
   for i := Low(FOptions) to High(FOptions) do
   begin
+    if FOptions[i].IsPositional then
+      Continue; // skip positionals in the Options section
+
     Write('  ');
-    // Only print short option if defined (non-zero char). Positionals may
-    // have ShortOpt = #0; in that case, omit the short form and align output.
+    // Only print short option if defined (non-zero char).
     if FOptions[i].ShortOpt <> #0 then
       Write('-' + FOptions[i].ShortOpt + ', ')
     else
       Write('    '); // spaces to align when no short option
 
     Write('--' + FOptions[i].LongOpt);
+    Write(Space(MaxLong - Length(FOptions[i].LongOpt)));
+    Write('  ');
+    WriteLn(FOptions[i].HelpText);
+  end;
+
+  { Print positional arguments separately to avoid showing them as `--name` }
+  // Find any positionals
+  for i := Low(FOptions) to High(FOptions) do
+    if FOptions[i].IsPositional then
+    begin
+      WriteLn;
+      WriteLn('Positionals:');
+      Break;
+    end;
+
+  // Compute max positional name length for alignment
+  MaxLong := 0;
+  for i := Low(FOptions) to High(FOptions) do
+    if FOptions[i].IsPositional then
+      if Length(FOptions[i].LongOpt) > MaxLong then
+        MaxLong := Length(FOptions[i].LongOpt);
+
+  for i := Low(FOptions) to High(FOptions) do
+  begin
+    if not FOptions[i].IsPositional then
+      Continue;
+
+    Write('  ');
+    // Print positional name without dashes
+    Write(FOptions[i].LongOpt);
     Write(Space(MaxLong - Length(FOptions[i].LongOpt)));
     Write('  ');
     WriteLn(FOptions[i].HelpText);
