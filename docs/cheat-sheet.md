@@ -54,6 +54,9 @@ begin
 end.
 ```
 
+Note: the help printer (`ShowHelp`) automatically appends " (required)" to the
+help text for any option or positional argument marked `Required = True`.
+
 ## 🎯 Supported Argument Formats
 
 ArgParser supports multiple flexible formats for specifying arguments:

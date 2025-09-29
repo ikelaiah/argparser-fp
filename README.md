@@ -104,8 +104,11 @@ Options:
   -h, --help     Show this help message
   -c, --count    Set count value
   -v, --verbose  Enable verbose mode
-  -f, --file     Specify a file path
+  -f, --file     Specify a file path (required)
   -t, --tags     Comma-separated list of tags
+  
+Note: the help printer (`ShowHelp`) automatically appends " (required)" to the
+help text for any option or positional argument marked `Required = True`.
 ```
 
 Example Usage

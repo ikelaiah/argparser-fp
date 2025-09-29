@@ -4,6 +4,9 @@
 // A lightweight, record-based command-line argument parser for Free Pascal.
 // Supports string, integer, float, boolean, and array types.
 // Provides methods to define options, parse command-line arguments, and retrieve parsed values.
+//
+// Note: The help printer (ShowHelp) automatically appends " (required)" to the
+// help text for any option or positional argument marked Required = True.
 //-------------------------------------------------------------------------------
 unit ArgParser;
 

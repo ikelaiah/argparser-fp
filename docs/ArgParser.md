@@ -248,6 +248,9 @@ end.
   - After parsing all args, any option marked `Required=True` must appear at least once; otherwise, parsing fails with an error.
   - For required string options, an empty value is rejected.
 
+Note: `ShowHelp` automatically appends " (required)" to the help text for any
+option or positional argument whose `Required` field is `True`.
+
 ### Token array shape (what Parse receives)
 
 `Parse(const Args: TStringDynArray)` expects a whitespace-delimited token array equivalent to `ParamStr(1..ParamCount)`. Each element is one token (switch or value).
