@@ -213,6 +213,12 @@ cd tests
 
 Note: v0.4.0 introduced a dedicated `ArgTokenizer` unit and focused tokenizer unit tests (`tests/ArgTokenizer.Test.pas`) to validate token shapes and normalization rules.
 
+### What's new in v0.5.0
+
+- A parser-level configuration flag `FSplitCombinedShorts` was added to `TArgParser`. It defaults to the previous global behavior but can be set per parser instance to control whether small all-alpha short groups like `-abc` are split into separate flags. This avoids surprising global state changes across modules.
+- A small helper `SetAllowMultiple(const LongOpt: string; const Value: Boolean)` was added to enable accumulation (allow multiple occurrences) for a given long option at runtime.
+- Tests were expanded to cover tokenizer edge cases (PowerShell dot-join, single dash, negative numbers) and repeated-option accumulation.
+
 ## 🤝 Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request. For major changes, please open an issue first to discuss what you would like to change.

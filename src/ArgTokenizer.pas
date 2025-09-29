@@ -53,7 +53,19 @@ begin
     t.OptName := '';
     t.HasValue := False;
     t.ValueStr := '';
-    if (Length(s) > 0) and (s[1] = '-') then
+    // Treat a single '-' token as a positional (stdin-like) and treat
+    // tokens like '-1' (negative numbers) as positionals rather than
+    // options. This avoids treating numeric values as option switches.
+    if (s = '-') or ((Length(s) > 1) and (s[1] = '-') and (s[2] in ['0'..'9'])) then
+    begin
+      t.Kind := tkPositional;
+      t.ValueStr := s;
+      SetLength(Result, Length(Result) + 1);
+      Result[High(Result)] := t;
+      Inc(i);
+      Continue;
+    end
+    else if (Length(s) > 0) and (s[1] = '-') then
     begin
       // Option-like token
       p := Pos('=', s);
@@ -71,8 +83,8 @@ begin
       end
       else
       begin
-        // Handle single-dash combined short flags and short-inline values
-        if (Length(s) > 2) and (s[2] <> '-') then
+  // Handle single-dash combined short flags and short-inline values
+  if (Length(s) > 2) and (s[2] <> '-') then
         begin
           // number of chars after '-'
           n := Length(s) - 1;
@@ -84,7 +96,8 @@ begin
               allLetters := False;
               Break;
             end;
-          if allLetters and (n <= 3) then
+          // Only split combined short flags when enabled by configuration
+          if SplitCombinedShorts and allLetters and (n <= 3) then
           begin
             // split into multiple single-letter option tokens: -a -b -c
             for j := 2 to Length(s) do

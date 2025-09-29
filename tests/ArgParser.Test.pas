@@ -220,8 +220,8 @@ begin
   // Add an option that allows multiple occurrences
   FParser.AddString('t','tag','Tag', '');
   // manually mark AllowMultiple on the option (since helper doesn't expose it yet)
-  // Find option index and set AllowMultiple
-  // ...existing code...
+  // Mark AllowMultiple via the helper
+  FParser.SetAllowMultiple('tag', True);
   DoParse(['--tag','a','--tag','b','--tag','c']);
   sarr := FParser.GetAllString('tag');
   CheckEquals(3, Length(sarr));

@@ -17,6 +17,7 @@ type
     procedure Test05_MixedSequence;
     procedure Test06_CombinedShortsAndInline;
     procedure Test07_CombinedShortsCornerCases;
+    procedure Test08_SingleDashAndNegativeNumber;
   end;
 
 implementation
@@ -118,6 +119,25 @@ begin
   CheckEquals(2, Length(toks));
   CheckEquals('-a', toks[0].OptName);
   CheckEquals('bcd', toks[1].ValueStr);
+end;
+
+procedure TTestTokenizer.Test08_SingleDashAndNegativeNumber;
+var
+  toks: TArgTokenArray;
+begin
+  // Single dash '-' should be treated as positional
+  toks := TokenizeArgs(['-']);
+  CheckEquals(1, Length(toks));
+  CheckEquals(Integer(tkPositional), Integer(toks[0].Kind));
+  CheckEquals('-', toks[0].ValueStr);
+
+  // Negative numbers like '-1' should be treated as positionals (not options)
+  toks := TokenizeArgs(['-1','--opt']);
+  CheckEquals(2, Length(toks));
+  CheckEquals(Integer(tkPositional), Integer(toks[0].Kind));
+  CheckEquals('-1', toks[0].ValueStr);
+  CheckEquals(Integer(tkOption), Integer(toks[1].Kind));
+  CheckEquals('--opt', toks[1].OptName);
 end;
 
 initialization

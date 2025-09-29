@@ -124,6 +124,12 @@ Args    = ["-finput", ".txt"]  # parser reattaches → value "input.txt"
 
 Note: In v0.4.0 tokenization was moved into a dedicated `ArgTokenizer` unit and covered by focused unit tests. This ensures token shapes are consistent and easier to test.
 
+Note (v0.5.0):
+
+- `TArgParser` now exposes a per-instance setting for combined-short splitting (`FSplitCombinedShorts`) so you can control whether small all-alpha short groups like `-abc` are split. This preserves the old default behavior but avoids global side-effects when using the library across multiple modules.
+- `SetAllowMultiple(const LongOpt: string; const Value: Boolean)` lets you enable accumulation for an existing option at runtime (useful in code that wants to allow repeated flags without redefining options).
+- Additional tests were added to `tests/ArgTokenizer.Test.pas` and `tests/ArgParser.Test.pas` to cover PowerShell '.' reattachment, single `-` handling, negative numbers, equals-style `--name=value`, the `--` separator (leftovers), and repeated option accumulation.
+
 ## Testing
 
 From the repository root run the test runner (PowerShell example):

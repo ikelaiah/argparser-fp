@@ -1,102 +1,95 @@
 # Changelog
 
-All notable changes to this project will be documented in this file.
+All notable changes to this project are documented below. This file follows the "Keep a Changelog" format and the project follows Semantic Versioning.
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+For details on the project and examples, see the repository README and the `docs/` folder.
 
+## [0.5.0] - 2025-09-29
 
-## [0.3.0] - 2025-09-28
+Added
 
-### Added (0.3.0)
+- `ArgTokenizer.pas`: Added explanatory comments to `TokenizeArgs` describing the combined-short splitting heuristic (small all-alpha groups <= 3 are split) and the PowerShell dot-join quirk where a following token beginning with '.' is reattached for short-inline values.
+- `ArgParser.pas`: Introduced a per-parser configuration field `FSplitCombinedShorts` (initialized from the legacy module-global `SplitCombinedShorts`) so callers can control combined-short splitting on a per-instance basis.
+- `ArgParser.pas`: Added `SetAllowMultiple(const LongOpt: string; const Value: Boolean)` helper to enable accumulation behavior for repeated options.
+- Tests: Added and updated tokenizer and parser unit tests covering combined-shorts, short-inline values, PowerShell '.' reattachment, single `-` and negative-number handling, `--name=value` splitting, `--` separator leftovers, and accumulation of repeated options.
+
+Changed
+
+- `ArgParser.pas`: Calls to the tokenizer temporarily set the module-global `SplitCombinedShorts` from the parser instance field and restore it afterwards to preserve backward compatibility while enabling per-instance control.
+
+Notes
+
+- Default behavior is unchanged: combined-short splitting remains enabled by default. Callers who need conservative behavior can set `FSplitCombinedShorts` to `False` on their `TArgParser` instance.
+
+## [0.4.0] - 2025-09-28
+
+Added / Changed
+
+- Extracted tokenization into a new `ArgTokenizer` unit and introduced focused unit tests for token shapes. This makes normalization rules (e.g., `--name=value`, positional marking, and raw-token preservation) easier to maintain and test.
+- `Parse` now consumes token objects produced by `TokenizeArgs`, reducing complexity in `ArgParser.pas` and improving separation of concerns.
+- Added `SplitCombinedShorts` configuration to `ArgTokenizer.pas` to control how short groups like `-abc` are handled (split into separate flags vs inline remainder).
+- Tests added for tokenizer edge-cases (cohorts, short-inline values, PowerShell '.'-append quirk).
+
+Notes
+
+- This release is primarily a refactor and test coverage improvement; behavior is compatible with previous releases except where noted.
+
+## [0.3.0] - 2025-09-27
+
+Added / Changed
 
 - Fast option lookup (`FLookup`) to map `-x` / `--name` switches to internal option records. This improves parsing performance and centralizes option registration.
+- Positional arguments are strictly positional by default: `AddPositional` arguments are matched only by their position in the argument list and are no longer automatically registered as `--name` switches. This reduces ambiguity and better matches common CLI expectations.
+- Documentation updates across `README.md`, `docs/cheat-sheet.md`, and the beginner's guide to explain the lookup behavior and the new positional semantics.
 
-### Changed (0.3.0)
-
-- Positionals are strictly positional by default: `AddPositional` arguments are matched only by their position in the argument list and are no longer automatically registered as `--name` switches. This reduces ambiguity and better matches common CLI expectations.
-- Documentation updates across README, cheat-sheet and the beginner's guide to explain the lookup behavior and the new positional semantics.
-
-### Fixed (0.3.0)
+Fixed
 
 - Fixed a small bug in `GetAllArray` and simplified `AddPositional` position index logic for maintainability.
 
-### Notes (0.3.0)
+Notes
 
 - These changes are backward-compatible for most common use cases. Advanced callers that relied on positional arguments being accessible via `--name` should update their call sites to add an explicit option if they still need the named form.
 
 
-## [0.4.0] - 2025-09-28
+## [0.2.0] - 2025-09-26
 
-### Added (0.4.0)
+Added
 
-- Extracted tokenization into a dedicated `ArgTokenizer` unit and introduced focused unit tests for token shapes. This makes normalization rules (e.g., `--name=value`, positional marking, and raw-token preservation) easier to maintain and test.
-
-### Changed (0.4.0)
-
-- `Parse` now consumes token objects produced by `TokenizeArgs`, reducing complexity in `ArgParser.pas` and improving separation of concerns.
-- Added `SplitCombinedShorts` configuration to `ArgTokenizer.pas` to control how short groups like `-abc` are handled (split into separate flags vs inline remainder).
-
-### Notes (0.4.0)
-
-- Tests added for tokenizer edge-cases (combined shorts, short-inline values, PowerShell '.'-append quirk).
-
-### Changed (0.4.0)
-
-- `Parse` now consumes token objects produced by `TokenizeArgs`, reducing complexity in `ArgParser.pas` and improving separation of concerns.
-
-### Notes (0.4.0)
-
-- This is a refactor-only change; behavior and public API are unchanged. Tests were added to ensure tokenization compatibility across common cases.
-
-## [0.2.0] - 2025-09-27
-
-### Fixed (0.2.0)
-
-- Short option with inline value now works reliably across shells:
-  - Handles `-finput.txt` and cases where PowerShell splits it into `-finput` and `.txt`.
-- No memory leaks on error paths:
-  - `ShowUsage` frees internal resources (and clears stored strings) so examples that print error + usage and exit have 0 unfreed blocks.
-  - `ShowHelp` continues to free internal resources after printing full help.
-
-
-### Changed (0.2.0)
-
-- `SetError` no longer frees resources automatically; this preserves the error message so callers can print it before calling `ShowUsage`.
-- Documentation updated to reflect the above behavior and the recommended error-handling pattern.
-- `ParseCommandLine` now detects a `--` separator and leftovers are available via the `Leftovers` property.
-- Parsing no longer auto-displays help; callers should check the `help` flag after parsing and call `ShowHelp`/`ShowUsage` and exit. This avoids surprising resource finalization during parsing.
-
-
-### Added (0.2.0)
-
-- Positional arguments support via `AddPositional` with ordered matching and `NArgs` for fixed or greedy consumption (`NArgs = -1`).
+- Positional arguments support via `AddPositional` with ordered matching and `NArgs` for fixed or variable consumption (`NArgs = -1`).
 - `ParseCommandLineKnown(out Leftovers)` helper which supports the `--` separator and returns leftover tokens for forwarding to subcommands.
 - Allow multiple occurrences for options (accumulation) and `GetAll*` accessors to retrieve all values in order (e.g., `GetAllString`, `GetAllArray`).
 - Boolean negation using `--no-<option>` to explicitly set boolean flags to false.
 
+Changed / Fixed
+
+- `ParseCommandLine` now detects a `--` separator and leftovers are available via the `Leftovers` property.
+- `SetError` no longer frees resources automatically; this preserves the error message so callers can print it before calling `ShowUsage`.
+- Parsing no longer auto-displays help; callers should check the `help` flag after parsing and call `ShowHelp`/`ShowUsage` and exit. This avoids surprising resource finalization during parsing.
+- Fixed shell-related short-inline value handling (PowerShell dot-join cases where `-finput.txt` could be split into `-finput` and `.txt`).
+- Fixed memory leaks on error paths: `ShowUsage` and `ShowHelp` now free internal resources after printing usage/help.
+
+
 ## [0.1.0] - 2025-09-19
 
-First release as an independent package, previously was part of TidyKit.
+Initial public release (split out from TidyKit).
 
-### Added
+Added
 
-- More examples
-- Initial release of ArgParser-FP.
+- Examples and documentation
 - Core features:
-  - Define short (`-f`) and long (`--file`) options.
-  - Parse string, integer, float, boolean, and array value types.
-  - Support for `--name=value` format for all option types.
-  - Enhanced boolean options supporting `--verbose=true/false` syntax.
-  - Automatic generation of usage and help text.
-  - Callback support for immediate action on parsed arguments.
-  - Methods to retrieve parsed values by option name.
-- Comprehensive unit tests.
-- `README.md` with quick start guide and API reference.
-- Example applications demonstrating usage.
-- MIT License.
+  - Define short (`-f`) and long (`--file`) options
+  - Parse string, integer, float, boolean, and array value types
+  - Support for `--name=value` format for all option types
+  - Enhanced boolean options supporting `--verbose=true/false` syntax
+  - Automatic generation of usage and help text
+  - Callback support for immediate action on parsed arguments
+  - Methods to retrieve parsed values by option name
+- Comprehensive unit tests
+- `README.md` with quick start guide and API reference
+- Example applications demonstrating usage
+- MIT License
 
-### Changed
+Changed
 
-- Changed name from ParseArgs to ArgParser.
-- Updated all docs to reflect the changes
+- Project renamed from ParseArgs to ArgParser; documentation updated accordingly.
+

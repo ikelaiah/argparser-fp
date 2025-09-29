@@ -78,6 +78,7 @@ type
     FLeftovers: TStringDynArray; { Unknown/unconsumed tokens when using ParseKnown }
     FParseKnown: Boolean; { If true, unknown tokens are returned in Leftovers instead of error }
     FLookup: TStringList; { maps '-x' and '--long' to option index (as string) }
+    FSplitCombinedShorts: Boolean; { Per-parser override for tokenizer combined-short splitting }
 
     { Locate option by input switch. }
     function FindOption(const Opt: string): Integer;
@@ -119,6 +120,8 @@ type
     procedure ParseCommandLine;
   { Parse command-line with support for `--` separator; leftovers can be retrieved via GetLeftovers }
   procedure ParseCommandLineKnown(out Leftovers: TStringDynArray);
+    { Enable or disable AllowMultiple for a named long option. Returns silently if not found. }
+    procedure SetAllowMultiple(const LongOpt: string; const Value: Boolean);
     { Returns True if an error occurred during parsing. }
     function HasError: Boolean;
     { Read-only property to get error message. }
@@ -199,6 +202,8 @@ begin
   FUsage := '';
   AddBoolean('h', 'help', 'Show this help message');
   FParseKnown := False;
+  // Default behavior copies module-level setting to allow backwards compatibility
+  FSplitCombinedShorts := SplitCombinedShorts;
   // Initialize lookup mapping
   FLookup := TStringList.Create;
   FLookup.CaseSensitive := False;
@@ -596,6 +601,7 @@ var
   Tokens: TArgTokenArray;
   tIdx: Integer;
   Tok: TArgToken;
+  OldSplit: Boolean;
 begin
   // Ensure local Value is in a safe state so Finalize(Value) is always valid.
   FillChar(Value, 0, SizeOf(Value));
@@ -635,7 +641,16 @@ begin
     end;
     pIdx := 0; // pointer into PosList
     // Tokenize input and iterate tokens
-    Tokens := TokenizeArgs(Args);
+    // Respect per-parser SplitCombinedShorts setting by temporarily setting
+    // the module-level flag used by ArgTokenizer and restoring it afterwards.
+
+    OldSplit := SplitCombinedShorts;
+    try
+      SplitCombinedShorts := FSplitCombinedShorts;
+      Tokens := TokenizeArgs(Args);
+    finally
+      SplitCombinedShorts := OldSplit;
+    end;
     tIdx := Low(Tokens);
     while tIdx <= High(Tokens) do
     begin
@@ -1119,6 +1134,15 @@ begin
   Parse(Args);
   Leftovers := FLeftovers;
   FParseKnown := False;
+end;
+
+procedure TArgParser.SetAllowMultiple(const LongOpt: string; const Value: Boolean);
+var
+  idx: Integer;
+begin
+  idx := FindOption(LongOpt);
+  if idx >= 0 then
+    FOptions[idx].AllowMultiple := Value;
 end;
 
 function TArgParser.GetAllString(const LongOpt: string): TStringDynArray;
