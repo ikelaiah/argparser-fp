@@ -4,7 +4,7 @@
 [![Lazarus](https://img.shields.io/badge/Lazarus-4.0+-blue.svg)](https://www.lazarus-ide.org/)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE.md)
 [![Documentation](https://img.shields.io/badge/Docs-Available-brightgreen.svg)](docs/)
-[![Version](https://img.shields.io/badge/Version-0.4.0-blueviolet.svg)](https://github.com/ikelaiah/argparser-fp/releases)
+[![Version](https://img.shields.io/badge/Version-0.5.0-blueviolet.svg)](https://github.com/ikelaiah/argparser-fp/releases)
 
 A lightweight, record-based command-line argument parser for Free Pascal. `ArgParser-FP` is designed for small to medium console applications, offering a clean API to handle arguments with minimal setup.
 
