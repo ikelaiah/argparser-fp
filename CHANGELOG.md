@@ -19,9 +19,10 @@ Changed
 
 Notes
 
-- Default behavior is unchanged: combined-short splitting remains enabled by default. Callers who need conservative behavior can set `FSplitCombinedShorts` to `False` on their `TArgParser` instance.
- - Documentation: help output now documented to show that `ShowHelp` appends " (required)" to any
-   option or positional marked as required.
+Default behavior is unchanged: combined-short splitting remains enabled by default. Callers who
+need conservative behavior can set `FSplitCombinedShorts` to `False` on their `TArgParser` instance.
+Documentation: help output is documented to show that `ShowHelp` appends " (required)" to any
+option or positional marked as required.
 
 ## [0.4.0] - 2025-09-28
 
