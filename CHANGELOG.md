@@ -4,6 +4,15 @@ All notable changes to this project are documented below. This file follows the 
 
 For details on the project and examples, see the repository README and the `docs/` folder.
 
+## [0.6.0] - 2025-10-01
+
+Changed
+
+- **Code Simplification**: Refactored `ArgParser.pas` to reduce code duplication between `ParseCommandLine` and `ParseCommandLineKnown` by extracting common `--` separator logic into a shared helper method `SplitArgsAroundSeparator`.
+- **Code Cleanup**: Removed redundant `ParseKnown` wrapper method that only delegated to `ParseKnownArgs`.
+- **ArgTokenizer Improvement**: Extracted PowerShell quirk handling (appending tokens starting with '.') into a reusable helper function `AppendDotTokenIfPresent` to eliminate code duplication.
+- **Maintainability**: No functional changes - all existing behavior preserved while making the codebase cleaner and easier to maintain.
+
 ## [0.5.0] - 2025-09-29
 
 Added

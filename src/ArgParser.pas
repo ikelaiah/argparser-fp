@@ -108,11 +108,12 @@ type
     { Appends the parsed (Name, Value) pair to FResults }
     procedure AppendResult(const OptionIdx: Integer; const Value: TArgValue);
   procedure AppendLeftover(const Token: string);
+    { Split args around '--' separator into left and right parts }
+    procedure SplitArgsAroundSeparator(const Args: TStringDynArray; out LeftArgs, RightArgs: TStringDynArray);
     { Ensures all options marked Required=True were provided at least once }
     function CheckRequiredOptionsPresent: Boolean;
     { Parse the provided command-line arguments array. }
   procedure Parse(const Args: TStringDynArray);
-  procedure ParseKnown(const Args: TStringDynArray; out Leftovers: TStringDynArray);
   public
     { Initialize parser state. Call before adding any options. }
     procedure Init;
@@ -780,57 +781,18 @@ begin
   end;
 end;
 
-procedure TArgParser.ParseKnown(const Args: TStringDynArray; out Leftovers: TStringDynArray);
-begin
-  // Delegate to the public-friendly ParseKnownArgs implementation
-  ParseKnownArgs(Args, Leftovers);
-end;
-
 { Parse command-line arguments directly from ParamStr }
 procedure TArgParser.ParseCommandLine;
 var
-  Args: TStringDynArray;
-  i, dashIdx: Integer;
-  LeftArgs, RightArgs: TStringDynArray;
+  Args, LeftArgs, RightArgs: TStringDynArray;
+  i: Integer;
 begin
   Args := ParamStrToArray;
-  // Detect `--` separator and split like ParseCommandLineKnown did
-  dashIdx := -1;
-  for i := Low(Args) to High(Args) do
-    if Args[i] = '--' then
-    begin
-      dashIdx := i;
-      Break;
-    end;
-
-  if dashIdx >= 0 then
-  begin
-    if dashIdx > Low(Args) then
-    begin
-      SetLength(LeftArgs, dashIdx - Low(Args));
-      for i := 0 to Length(LeftArgs)-1 do
-        LeftArgs[i] := Args[Low(Args) + i];
-    end
-    else
-      LeftArgs := nil;
-
-    if dashIdx < High(Args) then
-    begin
-      SetLength(RightArgs, High(Args) - dashIdx);
-      for i := 0 to Length(RightArgs)-1 do
-        RightArgs[i] := Args[dashIdx + 1 + i];
-    end
-    else
-      RightArgs := nil;
-  end
-  else
-  begin
-    LeftArgs := Args;
-    RightArgs := nil;
-  end;
-
+  SplitArgsAroundSeparator(Args, LeftArgs, RightArgs);
+  
   // Parse left side as normal
   Parse(LeftArgs);
+  
   // Populate FLeftovers with any right-side tokens
   if Length(RightArgs) > 0 then
   begin
@@ -845,46 +807,12 @@ end;
 
 procedure TArgParser.ParseCommandLineKnown(out Leftovers: TStringDynArray);
 var
-  Args: TStringDynArray;
-  i, dashIdx: Integer;
-  LeftArgs, RightArgs: TStringDynArray;
+  Args, LeftArgs, RightArgs: TStringDynArray;
+  i: Integer;
 begin
   Args := ParamStrToArray;
-  dashIdx := -1;
-  for i := Low(Args) to High(Args) do
-    if Args[i] = '--' then
-    begin
-      dashIdx := i;
-      Break;
-    end;
-
-  if dashIdx >= 0 then
-  begin
-    if dashIdx > Low(Args) then
-    begin
-      SetLength(LeftArgs, dashIdx - Low(Args));
-      // copy elements safely
-      for i := 0 to Length(LeftArgs)-1 do
-        LeftArgs[i] := Args[Low(Args) + i];
-    end
-    else
-      LeftArgs := nil;
-
-    if dashIdx < High(Args) then
-    begin
-      SetLength(RightArgs, High(Args) - dashIdx);
-      for i := 0 to Length(RightArgs)-1 do
-        RightArgs[i] := Args[dashIdx + 1 + i];
-    end
-    else
-      RightArgs := nil;
-  end
-  else
-  begin
-    LeftArgs := Args;
-    RightArgs := nil;
-  end;
-
+  SplitArgsAroundSeparator(Args, LeftArgs, RightArgs);
+  
   ParseKnownArgs(LeftArgs, Leftovers);
 
   if Length(RightArgs) > 0 then
@@ -1207,6 +1135,48 @@ procedure TArgParser.AppendLeftover(const Token: string);
 begin
   SetLength(FLeftovers, Length(FLeftovers) + 1);
   FLeftovers[High(FLeftovers)] := Token;
+end;
+
+procedure TArgParser.SplitArgsAroundSeparator(const Args: TStringDynArray; out LeftArgs, RightArgs: TStringDynArray);
+var
+  i, dashIdx: Integer;
+begin
+  // Find `--` separator
+  dashIdx := -1;
+  for i := Low(Args) to High(Args) do
+    if Args[i] = '--' then
+    begin
+      dashIdx := i;
+      Break;
+    end;
+
+  if dashIdx >= 0 then
+  begin
+    // Split around `--`
+    if dashIdx > Low(Args) then
+    begin
+      SetLength(LeftArgs, dashIdx - Low(Args));
+      for i := 0 to Length(LeftArgs)-1 do
+        LeftArgs[i] := Args[Low(Args) + i];
+    end
+    else
+      LeftArgs := nil;
+
+    if dashIdx < High(Args) then
+    begin
+      SetLength(RightArgs, High(Args) - dashIdx);
+      for i := 0 to Length(RightArgs)-1 do
+        RightArgs[i] := Args[dashIdx + 1 + i];
+    end
+    else
+      RightArgs := nil;
+  end
+  else
+  begin
+    // No separator found
+    LeftArgs := Args;
+    RightArgs := nil;
+  end;
 end;
 
 procedure TArgParser.ParseKnownArgs(const Args: TStringDynArray; out Leftovers: TStringDynArray);

@@ -34,6 +34,18 @@ function TokenizeArgs(const Args: TStringDynArray): TArgTokenArray;
 
 implementation
 
+// Handle PowerShell quirk: if next token starts with '.' append it to current value
+function AppendDotTokenIfPresent(const Args: TStringDynArray; var i: Integer; var Value: string): Boolean;
+begin
+  Result := False;
+  if (i < High(Args)) and (Length(Args[i+1]) > 0) and (Args[i+1][1] = '.') then
+  begin
+    Value := Value + Args[i+1];
+    Inc(i);
+    Result := True;
+  end;
+end;
+
 function TokenizeArgs(const Args: TStringDynArray): TArgTokenArray;
 var
   i, p: Integer;
@@ -132,8 +144,7 @@ begin
               // remainder becomes a positional token (value)
               rem := Copy(s, 3, MaxInt);
               // PowerShell quirk: if next token starts with '.' append it
-              if (i < High(Args)) and (Length(Args[i+1]) > 0) and (Args[i+1][1] = '.') then
-                rem := rem + Args[i+1];
+              AppendDotTokenIfPresent(Args, i, rem);
               t.Kind := tkPositional;
               t.Raw := rem;
               t.ValueStr := rem;
@@ -141,11 +152,7 @@ begin
               t.HasValue := True;
               SetLength(Result, Length(Result) + 1);
               Result[High(Result)] := t;
-              // advance by 1 (current) plus one more if we appended next token
-              if (i < High(Args)) and (Length(Args[i+1]) > 0) and (Args[i+1][1] = '.') then
-                Inc(i, 2)
-              else
-                Inc(i);
+              Inc(i);
               Continue;
             end
             else

@@ -4,12 +4,45 @@
 [![Lazarus](https://img.shields.io/badge/Lazarus-4.0+-blue.svg)](https://www.lazarus-ide.org/)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE.md)
 [![Documentation](https://img.shields.io/badge/Docs-Available-brightgreen.svg)](docs/)
-[![Version](https://img.shields.io/badge/Version-0.5.0-blueviolet.svg)](https://github.com/ikelaiah/argparser-fp/releases)
+[![Version](https://img.shields.io/badge/Version-0.6.0-blueviolet.svg)](https://github.com/ikelaiah/argparser-fp/releases)
 
 A lightweight, record-based command-line argument parser for Free Pascal. `ArgParser-FP` is designed for small to medium console applications, offering a clean API to handle arguments with minimal setup.
 
-> [!WARNING]
-> This library is currently in active development. While it is functional and has been tested, some features may change in future releases. Please review the [Changelog](CHANGELOG.md) for the latest updates.
+Why use ArgParser-FP
+
+- Small, dependency-free, and focused on console apps built with Free Pascal.
+
+- Compact API: define options, parse once, and retrieve typed values.
+
+Quickstart — run in under 30 seconds
+
+1. Copy `src/ArgParser.pas` into your project and add `ArgParser` to `uses`.
+
+2. Save this minimal program as `quick.pas` and compile:
+
+```pascal
+program Quick;
+uses ArgParser, SysUtils;
+var P: TArgParser;
+begin
+  P.Init;
+  P.AddString('f','file','Input file','',True);
+  P.ParseCommandLine;
+  if P.GetBoolean('help') then P.ShowHelp;
+  Writeln('File=',P.GetString('file'));
+  P.Done;
+end.
+```
+
+Build & run (PowerShell):
+
+```powershell
+fpc quick.pas
+.\quick.exe --help
+```
+
+More examples and full docs are below. If you like short, clear APIs, try the `examples/` folder.
+
 
 ## ✨ Features
 
@@ -224,7 +257,7 @@ cd tests
 
 Note: v0.4.0 introduced a dedicated `ArgTokenizer` unit and focused tokenizer unit tests (`tests/ArgTokenizer.Test.pas`) to validate token shapes and normalization rules.
 
-### What's new in v0.5.0
+### What's new in v0.6.0
 
 - A parser-level configuration flag `FSplitCombinedShorts` was added to `TArgParser`. It defaults to the previous global behavior but can be set per parser instance to control whether small all-alpha short groups like `-abc` are split into separate flags. This avoids surprising global state changes across modules.
 - A small helper `SetAllowMultiple(const LongOpt: string; const Value: Boolean)` was added to enable accumulation (allow multiple occurrences) for a given long option at runtime.
