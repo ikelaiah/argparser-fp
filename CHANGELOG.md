@@ -4,6 +4,14 @@ All notable changes to this project are documented below. This file follows the 
 
 For details on the project and examples, see the repository README and the `docs/` folder.
 
+## [0.6.1] - 2025-10-01
+
+Changed
+
+- **Internal Code Simplification**: Removed unused internal methods `IsHelpRequested()` and `NormalizeToken()` to reduce code complexity and improve maintainability (~80 lines of dead code removed).
+- **Documentation Updates**: Updated internal code comments to better reflect the separation of concerns between ArgParser and ArgTokenizer.
+- **Maintainability**: All changes are internal only - no public API changes, full backward compatibility maintained.
+
 ## [0.6.0] - 2025-10-01
 
 Changed

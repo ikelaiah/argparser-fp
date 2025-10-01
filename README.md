@@ -4,7 +4,7 @@
 [![Lazarus](https://img.shields.io/badge/Lazarus-4.0+-blue.svg)](https://www.lazarus-ide.org/)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE.md)
 [![Documentation](https://img.shields.io/badge/Docs-Available-brightgreen.svg)](docs/)
-[![Version](https://img.shields.io/badge/Version-0.6.0-blueviolet.svg)](https://github.com/ikelaiah/argparser-fp/releases)
+[![Version](https://img.shields.io/badge/Version-0.6.1-blueviolet.svg)](https://github.com/ikelaiah/argparser-fp/releases)
 
 A lightweight, record-based command-line argument parser for Free Pascal. `ArgParser-FP` is designed for small to medium console applications, offering a clean API to handle arguments with minimal setup.
 
@@ -257,11 +257,14 @@ cd tests
 
 Note: v0.4.0 introduced a dedicated `ArgTokenizer` unit and focused tokenizer unit tests (`tests/ArgTokenizer.Test.pas`) to validate token shapes and normalization rules.
 
-### What's new in v0.6.0
+### What's new in v0.6.1
 
-- A parser-level configuration flag `FSplitCombinedShorts` was added to `TArgParser`. It defaults to the previous global behavior but can be set per parser instance to control whether small all-alpha short groups like `-abc` are split into separate flags. This avoids surprising global state changes across modules.
-- A small helper `SetAllowMultiple(const LongOpt: string; const Value: Boolean)` was added to enable accumulation (allow multiple occurrences) for a given long option at runtime.
-- Tests were expanded to cover tokenizer edge cases (PowerShell dot-join, single dash, negative numbers) and repeated-option accumulation.
+- **Code Simplification**: Removed unused internal methods (`IsHelpRequested`, `NormalizeToken`) to reduce code complexity and improve maintainability.
+- **Simplified Error Handling**: Streamlined error access by removing unnecessary wrapper methods - errors are now accessed directly via the `Error` property.
+- **Documentation Updates**: Updated internal code comments to reflect the cleaner architecture and improved separation of concerns with ArgTokenizer.
+- **Maintainability**: Continued focus on code clarity while preserving all functionality and API compatibility.
+
+Note (v0.6.1): This release contains only internal simplifications. All public APIs remain unchanged and fully backward compatible.
 
 ## 🤝 Contributing
 
