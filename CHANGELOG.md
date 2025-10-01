@@ -4,6 +4,18 @@ All notable changes to this project are documented below. This file follows the 
 
 For details on the project and examples, see the repository README and the `docs/` folder.
 
+## [0.7.0] - 2025-10-01
+
+Changed
+
+- **Code Simplification**: Refactored internal implementation to reduce complexity and remove duplicate code patterns without losing any functionality.
+- **Helper Functions**: Introduced helper functions for common operations like TArgValue initialization and array management to reduce repetitive code.
+- **Cleaner Type Parsing**: Split the complex `ParseValue` method into focused type-specific parsing functions for better maintainability.
+- **Simplified Tokenizer**: Extracted helper functions in ArgTokenizer to improve code readability and reduce complexity.
+- **Streamlined Methods**: Consolidated duplicate initialization patterns in `AddXXX` methods and simplified array operations throughout the codebase.
+
+Note: This release contains only internal simplifications and refactoring. All public APIs remain unchanged and fully backward compatible.
+
 ## [0.6.1] - 2025-10-01
 
 Changed

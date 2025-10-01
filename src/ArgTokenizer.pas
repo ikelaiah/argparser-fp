@@ -5,7 +5,10 @@ unit ArgTokenizer;
 interface
 
 uses
-  Classes, SysUtils, Types;
+  Classes, Types;
+
+
+
 
 var
   // If True, small combined short flags like -abc are split into -a -b -c
@@ -34,6 +37,59 @@ function TokenizeArgs(const Args: TStringDynArray): TArgTokenArray;
 
 implementation
 
+{ Helper function to check if all characters from position are letters }
+function AreAllLetters(const s: string; fromPos: Integer): Boolean;
+var
+  j: Integer;
+begin
+  Result := True;
+  for j := fromPos to Length(s) do
+    if not (s[j] in ['A'..'Z', 'a'..'z']) then
+    begin
+      Result := False;
+      Break;
+    end;
+end;
+
+// Helper function to create a basic token
+function CreateToken(Kind: TArgTokenKind; const Raw: string): TArgToken;
+begin
+  Result.Kind := Kind;
+  Result.Raw := Raw;
+  Result.OptName := '';
+  Result.HasValue := False;
+  Result.ValueStr := '';
+end;
+
+// Helper function to create an option token
+function CreateOptionToken(const Raw, OptName: string): TArgToken;
+begin
+  Result := CreateToken(tkOption, Raw);
+  Result.OptName := OptName;
+end;
+
+// Helper function to create a positional token
+function CreatePositionalToken(const Raw: string): TArgToken;
+begin
+  Result := CreateToken(tkPositional, Raw);
+  Result.ValueStr := Raw;
+end;
+
+// Helper function to create an option token with inline value
+function CreateOptionTokenWithValue(const Raw, OptName, ValueStr: string): TArgToken;
+begin
+  Result := CreateOptionToken(Raw, OptName);
+  Result.HasValue := True;
+  Result.ValueStr := ValueStr;
+end;
+
+// Helper function to append a token to the result array
+procedure AppendToken(var Tokens: TArgTokenArray; const Token: TArgToken);
+begin
+  SetLength(Tokens, Length(Tokens) + 1);
+  Tokens[High(Tokens)] := Token;
+end;
+
 // Handle PowerShell quirk: if next token starts with '.' append it to current value
 function AppendDotTokenIfPresent(const Args: TStringDynArray; var i: Integer; var Value: string): Boolean;
 begin
@@ -57,112 +113,71 @@ var
 begin
   SetLength(Result, 0);
   if Length(Args) = 0 then Exit;
+  
   i := Low(Args);
   while i <= High(Args) do
   begin
     s := Args[i];
-    t.Raw := s;
-    t.OptName := '';
-    t.HasValue := False;
-    t.ValueStr := '';
-    // Treat a single '-' token as a positional (stdin-like) and treat
-    // tokens like '-1' (negative numbers) as positionals rather than
-    // options. This avoids treating numeric values as option switches.
+    
+    // Handle special cases: single '-' or negative numbers
     if (s = '-') or ((Length(s) > 1) and (s[1] = '-') and (s[2] in ['0'..'9'])) then
     begin
-      t.Kind := tkPositional;
-      t.ValueStr := s;
-      SetLength(Result, Length(Result) + 1);
-      Result[High(Result)] := t;
+      AppendToken(Result, CreatePositionalToken(s));
       Inc(i);
       Continue;
     end
+    // Handle option-like tokens
     else if (Length(s) > 0) and (s[1] = '-') then
     begin
-      // Option-like token
+      // Check for inline value with '='
       p := Pos('=', s);
       if p > 0 then
       begin
-        t.Kind := tkOption;
-        t.OptName := Copy(s, 1, p-1);
-        t.HasValue := True;
-        t.ValueStr := Copy(s, p+1, MaxInt);
-        // add as single token
-        SetLength(Result, Length(Result) + 1);
-        Result[High(Result)] := t;
+        t := CreateOptionTokenWithValue(s, Copy(s, 1, p-1), Copy(s, p+1, MaxInt));
+        AppendToken(Result, t);
         Inc(i);
         Continue;
       end
       else
       begin
-  // Handle single-dash combined short flags and short-inline values
-  if (Length(s) > 2) and (s[2] <> '-') then
+        // Handle combined short flags and short-inline values
+        if (Length(s) > 2) and (s[2] <> '-') then
         begin
-          // number of chars after '-'
-          n := Length(s) - 1;
-          // consider splitting into single-letter flags when small group (<=3)
-          allLetters := True;
-          for j := 2 to Length(s) do
-            if not (s[j] in ['A'..'Z', 'a'..'z']) then
-            begin
-              allLetters := False;
-              Break;
-            end;
-          // Only split combined short flags when enabled by configuration
+          n := Length(s) - 1; // number of chars after '-'
+          allLetters := AreAllLetters(s, 2);
+          
+          // Split small letter combinations when enabled
           if SplitCombinedShorts and allLetters and (n <= 3) then
           begin
-            // split into multiple single-letter option tokens: -a -b -c
+            // Split into multiple single-letter option tokens: -a -b -c
             for j := 2 to Length(s) do
             begin
-              t.Kind := tkOption;
-              t.OptName := '-' + s[j];
-              t.HasValue := False;
-              t.ValueStr := '';
-              t.Raw := t.OptName;
-              SetLength(Result, Length(Result) + 1);
-              Result[High(Result)] := t;
+              t := CreateOptionToken('-' + s[j], '-' + s[j]);
+              AppendToken(Result, t);
             end;
             Inc(i);
             Continue;
           end
           else
           begin
-            // Decide whether this is a short option with an inline remainder
-            // or a mixed/numeric combined token that should be preserved.
-            // Treat as inline when either all letters (handled above for small groups)
-            // or when the third character is a letter (e.g. '-finput').
+            // Handle short option with inline value or preserve mixed tokens
             if allLetters or ((Length(s) >= 3) and (s[3] in ['A'..'Z', 'a'..'z'])) then
             begin
-              // treat as short option with inline value: '-finput' -> '-f' and positional 'input'
-              t.Kind := tkOption;
-              t.OptName := '-' + s[2];
-              t.HasValue := False;
-              t.ValueStr := '';
-              t.Raw := t.OptName;
-              SetLength(Result, Length(Result) + 1);
-              Result[High(Result)] := t;
-              // remainder becomes a positional token (value)
+              // Treat as short option with inline value: '-finput' -> '-f' and 'input'
+              AppendToken(Result, CreateOptionToken('-' + s[2], '-' + s[2]));
+              
               rem := Copy(s, 3, MaxInt);
-              // PowerShell quirk: if next token starts with '.' append it
+              // Handle PowerShell quirk
               AppendDotTokenIfPresent(Args, i, rem);
-              t.Kind := tkPositional;
-              t.Raw := rem;
-              t.ValueStr := rem;
-              t.OptName := '';
-              t.HasValue := True;
-              SetLength(Result, Length(Result) + 1);
-              Result[High(Result)] := t;
+              
+              AppendToken(Result, CreatePositionalToken(rem));
               Inc(i);
               Continue;
             end
             else
             begin
-              // Mixed or numeric combined shorts should be preserved as a single token
-              t.Kind := tkOption;
-              t.OptName := s;
-              t.Raw := s;
-              SetLength(Result, Length(Result) + 1);
-              Result[High(Result)] := t;
+              // Preserve mixed or numeric combined tokens as single option
+              AppendToken(Result, CreateOptionToken(s, s));
               Inc(i);
               Continue;
             end;
@@ -170,19 +185,16 @@ begin
         end
         else
         begin
-          t.Kind := tkOption;
-          t.OptName := s;
+          // Standard option token
+          AppendToken(Result, CreateOptionToken(s, s));
         end;
       end;
     end
     else
     begin
-      t.Kind := tkPositional;
-      // For positionals store the raw as ValueStr too for convenience
-      t.ValueStr := s;
+      // Positional argument
+      AppendToken(Result, CreatePositionalToken(s));
     end;
-    SetLength(Result, Length(Result) + 1);
-    Result[High(Result)] := t;
     Inc(i);
   end;
 end;

@@ -86,6 +86,12 @@ type
     function FindOption(const Opt: string): Integer;
     { Convert string to TArgValue based on ArgType. }
     function ParseValue(const ValueStr: string; const ArgType: TArgType; var Value: TArgValue): Boolean;
+    { Type-specific parsing helpers }
+    function ParseStringValue(const ValueStr: string; var Value: TArgValue): Boolean;
+    function ParseIntegerValue(const ValueStr: string; var Value: TArgValue): Boolean;
+    function ParseFloatValue(const ValueStr: string; var Value: TArgValue): Boolean;
+    function ParseBooleanValue(const ValueStr: string; var Value: TArgValue): Boolean;
+    function ParseArrayValue(const ValueStr: string; var Value: TArgValue): Boolean;
     { Internal helper to add an option record. }
     procedure AddOption(const Option: TArgOption);
     { Record a parsing error. }
@@ -183,6 +189,25 @@ begin
     Result[i-1] := ParamStr(i);
 end;
 
+{ Helper function to initialize TArgValue with proper defaults }
+function CreateArgValue(const ArgType: TArgType): TArgValue;
+begin
+  Finalize(Result);
+  Result.ArgType := ArgType;
+  Result.Str := '';
+  Result.Int := 0;
+  Result.Flt := 0.0;
+  Result.Bool := False;
+  Result.Arr := nil;
+end;
+
+{ Helper function to extend dynamic arrays }
+procedure AppendToArray(var Arr: TStringDynArray; const Value: string);
+begin
+  SetLength(Arr, Length(Arr) + 1);
+  Arr[High(Arr)] := Value;
+end;
+
 { TArgParser }
 
 procedure TArgParser.Init;
@@ -247,62 +272,56 @@ begin
 end;
 
 function TArgParser.ParseValue(const ValueStr: string; const ArgType: TArgType; var Value: TArgValue): Boolean;
-var
-  i: Integer;
-  s: string;
-  Parts: TStringDynArray;
 begin
-  Result := False;
-
-  // Finalize previous value to prevent memory leaks
-  Finalize(Value);
-
-  Value.ArgType := ArgType;
-  
-  // Initialize all fields to avoid potential memory issues
-  Value.Str := '';
-  Value.Int := 0;
-  Value.Flt := 0.0;
-  Value.Bool := False;
-  Value.Arr := nil;
+  // Initialize value with proper defaults
+  Value := CreateArgValue(ArgType);
   
   case ArgType of
-    atString:
-      begin
-        Value.Str := ValueStr;
-        Result := True;
-      end;
-    atInteger:
-      begin
-        if TryStrToInt(ValueStr, Value.Int) then
-          Result := True;
-      end;
-    atFloat:
-      begin
-        if TryStrToFloat(ValueStr, Value.Flt) then
-          Result := True;
-      end;
-    atBoolean:
-      begin
-        if TryStrToBool(ValueStr, Value.Bool) then
-          Result := True;
-      end;
-    atArray:
-      begin
-        // Use SplitString from SysUtils
-        Parts := SplitString(ValueStr, ',');
-        for i := 0 to High(Parts) do
-        begin
-          s := Trim(Parts[i]);
-          if s <> '' then
-          begin
-            SetLength(Value.Arr, Length(Value.Arr)+1);
-            Value.Arr[High(Value.Arr)] := s;
-          end;
-        end;
-        Result := True;
-      end;
+    atString:  Result := ParseStringValue(ValueStr, Value);
+    atInteger: Result := ParseIntegerValue(ValueStr, Value);
+    atFloat:   Result := ParseFloatValue(ValueStr, Value);
+    atBoolean: Result := ParseBooleanValue(ValueStr, Value);
+    atArray:   Result := ParseArrayValue(ValueStr, Value);
+  else
+    Result := False;
   end;
+end;
+
+function TArgParser.ParseStringValue(const ValueStr: string; var Value: TArgValue): Boolean;
+begin
+  Value.Str := ValueStr;
+  Result := True;
+end;
+
+function TArgParser.ParseIntegerValue(const ValueStr: string; var Value: TArgValue): Boolean;
+begin
+  Result := TryStrToInt(ValueStr, Value.Int);
+end;
+
+function TArgParser.ParseFloatValue(const ValueStr: string; var Value: TArgValue): Boolean;
+begin
+  Result := TryStrToFloat(ValueStr, Value.Flt);
+end;
+
+function TArgParser.ParseBooleanValue(const ValueStr: string; var Value: TArgValue): Boolean;
+begin
+  Result := TryStrToBool(ValueStr, Value.Bool);
+end;
+
+function TArgParser.ParseArrayValue(const ValueStr: string; var Value: TArgValue): Boolean;
+var
+  Parts: TStringDynArray;
+  i: Integer;
+  s: string;
+begin
+  Parts := SplitString(ValueStr, ',');
+  for i := 0 to High(Parts) do
+  begin
+    s := Trim(Parts[i]);
+    if s <> '' then
+      AppendToArray(Value.Arr, s);
+  end;
+  Result := True;
 end;
 
 procedure TArgParser.ResetParseState;
@@ -926,14 +945,8 @@ procedure TArgParser.AddString(const ShortOpt: Char; const LongOpt, HelpText: st
 var
   DefaultValue: TArgValue;
 begin
-  // Initialize all fields
-  DefaultValue.ArgType := atString;
+  DefaultValue := CreateArgValue(atString);
   DefaultValue.Str := Default;
-  DefaultValue.Int := 0;
-  DefaultValue.Flt := 0.0;
-  DefaultValue.Bool := False;
-  DefaultValue.Arr := nil;
-  
   Add(ShortOpt, LongOpt, atString, HelpText, nil, nil, Required, DefaultValue);
 end;
 
@@ -942,14 +955,8 @@ procedure TArgParser.AddInteger(const ShortOpt: Char; const LongOpt, HelpText: s
 var
   DefaultValue: TArgValue;
 begin
-  // Initialize all fields
-  DefaultValue.ArgType := atInteger;
-  DefaultValue.Str := '';
+  DefaultValue := CreateArgValue(atInteger);
   DefaultValue.Int := Default;
-  DefaultValue.Flt := 0.0;
-  DefaultValue.Bool := False;
-  DefaultValue.Arr := nil;
-  
   Add(ShortOpt, LongOpt, atInteger, HelpText, nil, nil, Required, DefaultValue);
 end;
 
@@ -958,14 +965,8 @@ procedure TArgParser.AddFloat(const ShortOpt: Char; const LongOpt, HelpText: str
 var
   DefaultValue: TArgValue;
 begin
-  // Initialize all fields
-  DefaultValue.ArgType := atFloat;
-  DefaultValue.Str := '';
-  DefaultValue.Int := 0;
+  DefaultValue := CreateArgValue(atFloat);
   DefaultValue.Flt := Default;
-  DefaultValue.Bool := False;
-  DefaultValue.Arr := nil;
-  
   Add(ShortOpt, LongOpt, atFloat, HelpText, nil, nil, Required, DefaultValue);
 end;
 
@@ -974,14 +975,8 @@ procedure TArgParser.AddBoolean(const ShortOpt: Char; const LongOpt, HelpText: s
 var
   DefaultValue: TArgValue;
 begin
-  // Initialize all fields
-  DefaultValue.ArgType := atBoolean;
-  DefaultValue.Str := '';
-  DefaultValue.Int := 0;
-  DefaultValue.Flt := 0.0;
+  DefaultValue := CreateArgValue(atBoolean);
   DefaultValue.Bool := Default;
-  DefaultValue.Arr := nil;
-  
   Add(ShortOpt, LongOpt, atBoolean, HelpText, nil, nil, Required, DefaultValue);
 end;
 
@@ -989,14 +984,7 @@ procedure TArgParser.AddArray(const ShortOpt: Char; const LongOpt, HelpText: str
 var
   DefaultValue: TArgValue;
 begin
-  // Initialize all fields
-  DefaultValue.ArgType := atArray;
-  DefaultValue.Str := '';
-  DefaultValue.Int := 0;
-  DefaultValue.Flt := 0.0;
-  DefaultValue.Bool := False;
-  DefaultValue.Arr := nil;
-  
+  DefaultValue := CreateArgValue(atArray);
   Add(ShortOpt, LongOpt, atArray, HelpText, nil, nil, Required, DefaultValue);
 end;
 
@@ -1004,15 +992,10 @@ procedure TArgParser.AddPositional(const Name: string; const ArgType: TArgType; 
 var
   Option: TArgOption;
   DefaultValue: TArgValue;
-  idx: Integer;
 begin
   // Prepare default value container
-  DefaultValue.ArgType := ArgType;
+  DefaultValue := CreateArgValue(ArgType);
   DefaultValue.Str := Default;
-  DefaultValue.Int := 0;
-  DefaultValue.Flt := 0.0;
-  DefaultValue.Bool := False;
-  DefaultValue.Arr := nil;
 
   Option.ShortOpt := #0;
   Option.LongOpt := Name;
@@ -1023,7 +1006,6 @@ begin
   Option.Required := Required;
   Option.DefaultValue := DefaultValue;
   Option.IsPositional := True;
-  // PositionIndex: append at end (next index)
   Option.PositionIndex := Length(FOptions);
   Option.AllowMultiple := False;
   Option.NArgs := NArgs;
@@ -1033,8 +1015,7 @@ end;
 
 procedure TArgParser.AppendLeftover(const Token: string);
 begin
-  SetLength(FLeftovers, Length(FLeftovers) + 1);
-  FLeftovers[High(FLeftovers)] := Token;
+  AppendToArray(FLeftovers, Token);
 end;
 
 procedure TArgParser.SplitArgsAroundSeparator(const Args: TStringDynArray; out LeftArgs, RightArgs: TStringDynArray);
@@ -1144,40 +1125,30 @@ end;
 
 function TArgParser.GetAllBoolean(const LongOpt: string): TBooleanDynArray;
 var
-  i, cnt: Integer;
+  i: Integer;
   tmp: TBooleanDynArray;
 begin
-  cnt := 0;
-  for i := Low(FResults) to High(FResults) do
-    if (FResults[i].Name = LongOpt) and (FResults[i].Value.ArgType = atBoolean) then
-      Inc(cnt);
-  SetLength(tmp, cnt);
-  cnt := 0;
+  SetLength(tmp, 0);
   for i := Low(FResults) to High(FResults) do
     if (FResults[i].Name = LongOpt) and (FResults[i].Value.ArgType = atBoolean) then
     begin
-      tmp[cnt] := FResults[i].Value.Bool;
-      Inc(cnt);
+      SetLength(tmp, Length(tmp) + 1);
+      tmp[High(tmp)] := FResults[i].Value.Bool;
     end;
   Result := tmp;
 end;
 
 function TArgParser.GetAllArray(const LongOpt: string): TStringDynArrayArray;
 var
-  i, cnt: Integer;
+  i: Integer;
   tmp: TStringDynArrayArray;
 begin
-  cnt := 0;
-  for i := Low(FResults) to High(FResults) do
-    if (FResults[i].Name = LongOpt) and (FResults[i].Value.ArgType = atArray) then
-      Inc(cnt);
-  SetLength(tmp, cnt);
-  cnt := 0;
+  SetLength(tmp, 0);
   for i := Low(FResults) to High(FResults) do
     if (FResults[i].Name = LongOpt) and (FResults[i].Value.ArgType = atArray) then
     begin
-      tmp[cnt] := FResults[i].Value.Arr;
-      Inc(cnt);
+      SetLength(tmp, Length(tmp) + 1);
+      tmp[High(tmp)] := FResults[i].Value.Arr;
     end;
   Result := tmp;
 end;
@@ -1187,13 +1158,7 @@ var
   DefaultValue: TArgValue;
   i: Integer;
 begin
-  DefaultValue.ArgType := atArray;
-  // Initialize all fields to avoid potential memory issues
-  DefaultValue.Str := '';
-  DefaultValue.Int := 0;
-  DefaultValue.Flt := 0.0;
-  DefaultValue.Bool := False;
-  
+  DefaultValue := CreateArgValue(atArray);
   SetLength(DefaultValue.Arr, Length(DefaultArr));
   for i := 0 to High(DefaultArr) do
     DefaultValue.Arr[i] := DefaultArr[i];
