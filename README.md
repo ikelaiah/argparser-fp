@@ -30,7 +30,6 @@ begin
   P.ParseCommandLine;
   if P.GetBoolean('help') then P.ShowHelp;
   Writeln('File=',P.GetString('file'));
-  P.Done;
 end.
 ```
 
