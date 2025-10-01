@@ -22,13 +22,21 @@ Quickstart — run in under 30 seconds
 
 ```pascal
 program Quick;
+
 uses ArgParser, SysUtils;
-var P: TArgParser;
+
+var 
+  P: TArgParser;
 begin
   P.Init;
+  P.AddBoolean('h','help','Show this help message');
   P.AddString('f','file','Input file','',True);
+  
   P.ParseCommandLine;
-  if P.GetBoolean('help') then P.ShowHelp;
+  
+  if P.GetBoolean('help') then 
+    P.ShowHelp;
+  
   Writeln('File=',P.GetString('file'));
 end.
 ```

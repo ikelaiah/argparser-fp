@@ -369,7 +369,8 @@ begin
           "-abc"   │    Yes     │  ≤3  │     Yes      │ ["-a","-b","-c"]
           "-abc"   │    Yes     │  ≤3  │     No       │ ["-abc"]
           "-abcd"  │    Yes     │  >3  │     Yes      │ ["-a","bcd"]
-          "-a1b"   │    No      │  any │     any      │ ["-a","1b"] or ["-a1b"]
+          "-a1b"   │    No      │  any │     any      │ ["-a","1b"]
+          "-a12"   │    No      │  any │     any      │ ["-a12"]
           "-finput"│    Yes     │  any │     any      │ ["-f","input"]
         ----------------------------------------------------------------------}
         if (Length(s) > 2) and (s[2] <> '-') then
