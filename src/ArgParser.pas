@@ -90,17 +90,11 @@ type
     procedure AddOption(const Option: TArgOption);
     { Record a parsing error. }
     procedure SetError(const AError: string);
-    { Retrieve the current error message. }
-    function GetError: string;
     { Helpers to make Parse more readable }
-    { Returns True if any arg equals '-h' or '--help' }
-    function IsHelpRequested(const Args: TStringDynArray): Boolean;
     { Clears error flags/messages before a new Parse run }
     procedure ResetParseState;
     { Finalizes and clears FResults from any previous Parse run }
     procedure ClearPreviousResults;
-    { Normalizes current token into (OptName, HasValue, ValueStr); supports --name=value, -n=value, -nvalue and the PowerShell split quirk }
-  function NormalizeToken(const Args: TStringDynArray; var i: Integer; out OptName: string; out HasValue: Boolean; out ValueStr: string): Boolean;
     { Populates typed Value for the option; may consume next token; enforces required/empty rules and type parsing }
   function ParseOptionValue(const OptionIdx: Integer; var HasValue: Boolean; var ValueStr: string; const Tokens: TArgTokenArray; var tIdx: Integer; var Value: TArgValue; const CurrentOpt: string): Boolean;
     { Invokes any registered callbacks for this option }
@@ -128,7 +122,7 @@ type
     { Returns True if an error occurred during parsing. }
     function HasError: Boolean;
     { Read-only property to get error message. }
-    property Error: string read GetError;
+    property Error: string read FError;
     { Print formatted help information based on defined options. }
     procedure ShowHelp;
     { Print usage banner and options. }
@@ -311,20 +305,6 @@ begin
   end;
 end;
 
-function TArgParser.IsHelpRequested(const Args: TStringDynArray): Boolean;
-var
-  k: Integer;
-begin
-  { Quick scan for help flags. If found, Parse() will ShowHelp and exit early. }
-  Result := False;
-  for k := Low(Args) to High(Args) do
-    if (Args[k] = '-h') or (Args[k] = '--help') then
-    begin
-      Result := True;
-      Exit;
-    end;
-end;
-
 procedure TArgParser.ResetParseState;
 begin
   { Clear error status and message. Called at the beginning of Parse(). }
@@ -340,81 +320,6 @@ begin
   for k := 0 to High(FResults) do
     Finalize(FResults[k].Value);
   SetLength(FResults, 0);
-end;
-
-function TArgParser.NormalizeToken(const Args: TStringDynArray; var i: Integer; out OptName: string; out HasValue: Boolean; out ValueStr: string): Boolean;
-var
-  CurrentOpt: string;
-  EqualPos: Integer;
-  ShortOptStr: string;
-  OptionIdx: Integer;
-begin
-  { Normalize the current argument token into a consistent shape:
-    - OptName: '-x' or '--long'
-    - HasValue/ValueStr: inline value if present (e.g., --name=value, -n=value, -nvalue)
-
-    It also validates that the token starts with '-'.
-    Special handling: combined short option with concatenated value ('-finput.txt')
-    and the PowerShell split quirk where the next token starting with '.' is appended
-    for string options.
-  }
-  Result := False;
-  CurrentOpt := Args[i];
-  OptName := CurrentOpt;
-  ValueStr := '';
-  HasValue := False;
-
-  // Handle --name=value and -o=value
-  EqualPos := Pos('=', CurrentOpt);
-  if (EqualPos > 0) and (Length(CurrentOpt) > 2) and (CurrentOpt[1] = '-') then
-  begin
-    ValueStr := Copy(CurrentOpt, EqualPos + 1, Length(CurrentOpt));
-    OptName := Copy(CurrentOpt, 1, EqualPos - 1);
-    HasValue := True;
-    Result := True;
-    Exit;
-  end
-  // Handle combined short option with value (e.g. -fvalue)
-  else if (Length(CurrentOpt) > 2)
-       and (CurrentOpt[1] = '-')
-       and (CurrentOpt[2] <> '-') then
-  begin
-    ShortOptStr := Copy(CurrentOpt, 1, 2); // '-f'
-    OptionIdx := FindOption(ShortOptStr);
-    if OptionIdx = -1 then
-    begin
-      SetError('Unknown option: ' + ShortOptStr);
-      Exit;
-    end;
-
-    ValueStr := Copy(CurrentOpt, 3, MaxInt);
-    HasValue := True;
-    OptName := ShortOptStr;
-    // PowerShell quirk: append next token starting with '.' for string options
-    if (i < High(Args))
-       and (FOptions[OptionIdx].ArgType = atString)
-       and (Length(Args[i+1]) > 0)
-       and (Args[i+1][1] = '.') then
-    begin
-      ValueStr := ValueStr + Args[i+1];
-      Inc(i);
-    end;
-    Result := True;
-    Exit;
-  end;
-
-  // Validate starts with '-'
-  if (Length(CurrentOpt) = 0) or (CurrentOpt[1] <> '-') then
-  begin
-    // Not an option token; leave OptName empty to signal positional or leftover
-    OptName := '';
-    Result := True;
-    Exit;
-  end;
-
-  // No normalization needed; return as-is
-  OptName := CurrentOpt;
-  Result := True;
 end;
 
 function TArgParser.ParseOptionValue(const OptionIdx: Integer; var HasValue: Boolean; var ValueStr: string; const Tokens: TArgTokenArray; var tIdx: Integer; var Value: TArgValue; const CurrentOpt: string): Boolean;
@@ -558,11 +463,11 @@ end;
     - ClearPreviousResults frees previously parsed results so we start clean.
 
   Step 2: Iterate arguments one token at a time
-    - For each token, we first normalize it using NormalizeToken(). This produces:
+    - For each token, we use the pre-tokenized data from ArgTokenizer. This provides:
         OptName  -> standardized switch form ('-x' or '--long')
         HasValue -> whether a value accompanied the switch
         ValueStr -> inline value text (e.g., '--name=value', '-n=value', '-nvalue')
-      NormalizeToken also performs small conveniences like the PowerShell '.'-prefix
+      ArgTokenizer also handles conveniences like the PowerShell '.'-prefix
       quirk for atString combined short options.
 
   Step 3: Validate the option exists
@@ -662,7 +567,7 @@ begin
       HasValue := Tok.HasValue;
       ValueStr := Tok.ValueStr;
 
-      // If NormalizeToken left OptName empty, this is a positional or leftover token
+      // If OptName is empty, this is a positional or leftover token
       if (OptName = '') and (Tok.Kind = tkPositional) then
       begin
         // If we have a positional to fill, assign it
@@ -960,11 +865,6 @@ begin
   FHasError := True;
   FError := AError;
   // Do not clean up here so caller can still access Error and then ShowUsage.
-end;
-
-function TArgParser.GetError: string;
-begin
-  Result := FError;
 end;
 
 function TArgParser.HasError: Boolean;
