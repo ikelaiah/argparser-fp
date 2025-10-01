@@ -9,7 +9,7 @@
       <PathDelim Value="\"/>
       <SearchPaths>
         <OtherUnitFiles Value="..\..\src"/>
-        <UnitOutputDirectory Value="lib\$(TargetCPU)-$(TargetOS)\"/>
+        <UnitOutputDirectory Value="lib\$(TargetCPU)-$(TargetOS)"/>
       </SearchPaths>
       <Other>
         <CustomOptions Value="-FcUTF8"/>
@@ -19,7 +19,7 @@
 
 A lightweight, record-based command-line argument parser for Free Pascal. `ArgParser-FP` is designed for small to medium console applications, offering a clean API to handle arguments with minimal setup."/>
     <License Value="MIT"/>
-    <Version Major="1"/>
+    <Version Minor="7"/>
     <Files>
       <Item>
         <Filename Value="..\..\src\ArgParser.pas"/>
