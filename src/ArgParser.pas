@@ -5,8 +5,61 @@
 // Supports string, integer, float, boolean, and array types.
 // Provides methods to define options, parse command-line arguments, and retrieve parsed values.
 //
+// Boolean Options:
+// - Present means true: myapp --verbose → verbose = true
+// - Explicit values: myapp --verbose=false → verbose = false
+// - Negation form: myapp --no-verbose → verbose = false (for "verbose" option)
+//
 // Note: The help printer (ShowHelp) automatically appends " (required)" to the
 // help text for any option or positional argument marked Required = True.
+//
+//===============================================================================
+//  ARGUMENT PARSING ARCHITECTURE OVERVIEW
+//
+//  The argument parsing process follows a structured pipeline:
+//
+//  1. TOKENIZATION (ArgTokenizer.pas)
+//     Raw Args: ["--file=test.txt", "-v", "input.dat"]
+//     ↓
+//     Tokens: [
+//       {Kind: tkOption, OptName: "--file", HasValue: true, ValueStr: "test.txt"}
+//       {Kind: tkOption, OptName: "-v", HasValue: false, ValueStr: ""}  
+//       {Kind: tkPositional, OptName: "", HasValue: false, ValueStr: "input.dat"}
+//     ]
+//
+//  2. OPTION LOOKUP & VALIDATION
+//     For each token:
+//     ↓
+//     Token OptName → Option Definition Index → TArgOption record
+//     ↓
+//     Validate: option exists, type matches, required fields present
+//
+//  3. TYPE PARSING & CONVERSION
+//     ValueStr → Typed Value based on ArgType
+//     ↓
+//     "test.txt" (atString)  → TArgValue{Str: "test.txt"}
+//     "123" (atInteger)      → TArgValue{Int: 123}
+//     "true" (atBoolean)     → TArgValue{Bool: true}
+//     "a,b,c" (atArray)      → TArgValue{Arr: ["a","b","c"]}
+//
+//  4. RESULT STORAGE & CALLBACKS
+//     Parsed values stored in FResults array for later retrieval
+//     Optional callbacks executed immediately upon successful parsing
+//
+//  5. ACCESS & RETRIEVAL
+//     GetString("file") → "test.txt"
+//     GetBoolean("verbose") → true
+//     GetArray("tags") → ["tag1", "tag2", "tag3"]
+//
+//  SPECIAL FEATURES:
+//  • Boolean Negation: Use --no-<option> to set boolean options to false
+//    Example: --no-verbose sets a 'verbose' boolean option to false
+//  • Greedy Collection: Options/positionals with NArgs=-1 consume multiple tokens
+//    and join them with commas for array parsing or concatenated string values
+//  • Separator Support: Use "--" to separate options from trailing arguments
+//    Everything after "--" goes to leftovers, not parsed as options
+//
+//===============================================================================
 //-------------------------------------------------------------------------------
 unit ArgParser;
 
@@ -51,7 +104,7 @@ type
     IsPositional: Boolean; { True for positional arguments }
     PositionIndex: Integer; { Order index for positionals (0-based) }
     AllowMultiple: Boolean; { Allow repeated occurrences (accumulate) }
-    NArgs: Integer;        { 0 = single token (default), -1 = greedy (consume until next option), >0 = fixed count }
+    NArgs: Integer;        { 0 = single token (default), -1 = greedy (consume until next option, joined with commas), >0 = fixed count }
   end;
 
   { TOptionsArray: Dynamic array of TArgOption records. }
@@ -148,9 +201,9 @@ type
     Parameters:
       - Name: logical name used to retrieve the value(s)
       - ArgType: type of the positional (atString, atInteger, atFloat, atBoolean, atArray)
-      - NArgs: number of tokens to consume: 0 = single token (default), >0 fixed count, -1 = greedy (consume until next option/end)
+      - NArgs: number of tokens to consume: 0 = single token (default), >0 fixed count, -1 = greedy (consume until next option/end, joined with commas for string/array types)
     Positionals are matched in the order they are added. Greedy positionals (NArgs=-1)
-    will consume all remaining non-option tokens.
+    will consume all remaining non-option tokens and join them with commas.
   }
   procedure AddPositional(const Name: string; const ArgType: TArgType; const HelpText: string; const Default: string = ''; const Required: Boolean = False; const NArgs: Integer = 0);
   { Return all occurrences for options (accumulated).
@@ -179,6 +232,25 @@ type
 
 implementation
 
+{===============================================================================
+  Utility Functions for Array and Value Management
+  
+  These helper functions provide clean abstractions for common operations
+  needed throughout the parsing process.
+===============================================================================}
+
+{ Convert ParamStr array to dynamic string array
+  
+  Free Pascal's ParamStr function provides access to command-line arguments,
+  but we need them in a dynamic array format for easier processing.
+  
+  ParamStr Layout:
+    ParamStr(0) = Program name (not included in result)
+    ParamStr(1) = First argument
+    ParamStr(2) = Second argument
+    ...
+    ParamStr(ParamCount) = Last argument
+}
 function ParamStrToArray: TStringDynArray;
 var
   i: Integer;
@@ -189,23 +261,47 @@ begin
     Result[i-1] := ParamStr(i);
 end;
 
-{ Helper function to initialize TArgValue with proper defaults }
+{ TArgValue Factory Function
+  
+  Creates a properly initialized TArgValue record with all fields set to
+  safe default values. This prevents memory issues and ensures consistent
+  initialization across the codebase.
+  
+  TArgValue Memory Layout:
+  ┌─────────┬─────────┬─────────┬─────────┬─────────┬─────────────┐
+  │ ArgType │   Str   │   Int   │   Flt   │  Bool   │     Arr     │
+  │(variant)│ string  │ Integer │ Double  │ Boolean │StringDynArr │
+  └─────────┴─────────┴─────────┴─────────┴─────────┴─────────────┘
+  
+  Only the field corresponding to ArgType should be used, but all fields
+  are initialized for safety and to prevent memory corruption.
+}
 function CreateArgValue(const ArgType: TArgType): TArgValue;
 begin
-  Finalize(Result);
-  Result.ArgType := ArgType;
-  Result.Str := '';
-  Result.Int := 0;
-  Result.Flt := 0.0;
-  Result.Bool := False;
-  Result.Arr := nil;
+  Finalize(Result);           // Clean any existing managed memory
+  Result.ArgType := ArgType;  // Set the discriminator field
+  Result.Str := '';           // Initialize string field
+  Result.Int := 0;            // Initialize integer field  
+  Result.Flt := 0.0;          // Initialize float field
+  Result.Bool := False;       // Initialize boolean field
+  Result.Arr := nil;          // Initialize array field
 end;
 
-{ Helper function to extend dynamic arrays }
+{ Dynamic Array Append Helper
+  
+  Free Pascal doesn't provide built-in dynamic array append functionality,
+  so we implement it manually. This function safely extends an array and
+  adds a new element at the end.
+  
+  Array Growth Strategy:
+    Current: [item1, item2, item3]
+    Append:  "item4"
+    Result:  [item1, item2, item3, item4]
+}
 procedure AppendToArray(var Arr: TStringDynArray; const Value: string);
 begin
-  SetLength(Arr, Length(Arr) + 1);
-  Arr[High(Arr)] := Value;
+  SetLength(Arr, Length(Arr) + 1);  // Extend array by one element
+  Arr[High(Arr)] := Value;          // Set the new element value
 end;
 
 { TArgParser }
@@ -271,11 +367,48 @@ begin
     Result := Integer(PtrInt(FLookup.Objects[idx]));
 end;
 
+{===============================================================================
+  TYPE-SPECIFIC VALUE PARSING FUNCTIONS
+  
+  These functions handle the conversion of string values to typed TArgValue
+  records. Each function is responsible for one specific data type and
+  implements appropriate validation and conversion logic.
+
+  PARSING STRATEGY OVERVIEW:
+  
+  Input: ValueStr (string) + Target ArgType
+       ↓
+  ┌─────────────────────────────────────────────────────────────────────────┐
+  │                      TYPE PARSING DISPATCH                             │
+  ├─────────────────────────────────────────────────────────────────────────┤
+  │                                                                         │
+  │  ParseValue() → case ArgType of                                         │
+  │                   atString  → ParseStringValue()                        │
+  │                   atInteger → ParseIntegerValue()                       │
+  │                   atFloat   → ParseFloatValue()                         │
+  │                   atBoolean → ParseBooleanValue()                       │
+  │                   atArray   → ParseArrayValue()                         │
+  │                                                                         │
+  └─────────────────────────────────────────────────────────────────────────┘
+       ↓
+  Output: TArgValue with appropriate field set + Boolean success flag
+
+  VALIDATION EXAMPLES:
+  
+  String:   Any input is valid → Result.Str := ValueStr
+  Integer:  "123" → 123, "abc" → Error
+  Float:    "3.14" → 3.14, "not_a_number" → Error  
+  Boolean:  "true"/"false"/"1"/"0" → true/false, "maybe" → Error
+  Array:    "a,b,c" → ["a","b","c"], "" → []
+
+===============================================================================}
+
 function TArgParser.ParseValue(const ValueStr: string; const ArgType: TArgType; var Value: TArgValue): Boolean;
 begin
-  // Initialize value with proper defaults
+  // Initialize value with proper defaults for the target type
   Value := CreateArgValue(ArgType);
   
+  // Dispatch to type-specific parsing function
   case ArgType of
     atString:  Result := ParseStringValue(ValueStr, Value);
     atInteger: Result := ParseIntegerValue(ValueStr, Value);
@@ -283,45 +416,140 @@ begin
     atBoolean: Result := ParseBooleanValue(ValueStr, Value);
     atArray:   Result := ParseArrayValue(ValueStr, Value);
   else
-    Result := False;
+    Result := False; // Unknown type - should never happen
   end;
 end;
 
+{ String Value Parser
+  
+  Strings are the most permissive type - any input is considered valid.
+  No conversion or validation is needed, just direct assignment.
+  
+  Examples:
+    "hello"     → "hello"
+    ""          → "" (empty string)
+    "123"       → "123" (stored as string, not number)
+    "true"      → "true" (stored as string, not boolean)
+}
 function TArgParser.ParseStringValue(const ValueStr: string; var Value: TArgValue): Boolean;
 begin
-  Value.Str := ValueStr;
-  Result := True;
+  Value.Str := ValueStr;  // Direct assignment - all strings are valid
+  Result := True;         // String parsing never fails
 end;
 
+{ Integer Value Parser
+  
+  Attempts to convert string input to integer using Free Pascal's built-in
+  TryStrToInt function, which handles various integer formats safely.
+  
+  Valid Formats:
+    "123"     → 123
+    "-456"    → -456
+    "0"       → 0
+    "+789"    → 789
+  
+  Invalid Formats:
+    "abc"     → Parse error
+    "12.34"   → Parse error (use float type)
+    "12abc"   → Parse error
+    ""        → Parse error
+}
 function TArgParser.ParseIntegerValue(const ValueStr: string; var Value: TArgValue): Boolean;
 begin
   Result := TryStrToInt(ValueStr, Value.Int);
 end;
 
+{ Float Value Parser
+  
+  Attempts to convert string input to floating-point number using Free Pascal's
+  TryStrToFloat function, which respects locale-specific decimal separators.
+  
+  Valid Formats:
+    "3.14"    → 3.14
+    "-2.5"    → -2.5
+    "123"     → 123.0
+    "0.0"     → 0.0
+    "1e5"     → 100000.0 (scientific notation)
+  
+  Invalid Formats:
+    "abc"     → Parse error
+    "3.14.15" → Parse error
+    ""        → Parse error
+}
 function TArgParser.ParseFloatValue(const ValueStr: string; var Value: TArgValue): Boolean;
 begin
   Result := TryStrToFloat(ValueStr, Value.Flt);
 end;
 
+{ Boolean Value Parser
+  
+  Converts string input to boolean using Free Pascal's TryStrToBool function,
+  which recognizes several standard boolean representations.
+  
+  True Values:
+    "true", "True", "TRUE"
+    "yes", "Yes", "YES"  
+    "1"
+    "on", "On", "ON"
+  
+  False Values:
+    "false", "False", "FALSE"
+    "no", "No", "NO"
+    "0"
+    "off", "Off", "OFF"
+  
+  Invalid Formats:
+    "maybe"   → Parse error
+    "1.0"     → Parse error
+    ""        → Parse error
+}
 function TArgParser.ParseBooleanValue(const ValueStr: string; var Value: TArgValue): Boolean;
 begin
   Result := TryStrToBool(ValueStr, Value.Bool);
 end;
 
+{ Array Value Parser
+  
+  Parses comma-separated values into a string array. Empty segments are
+  filtered out, and each segment is trimmed of whitespace.
+  
+  Array Parsing Algorithm:
+  
+  Input: "item1, item2 ,item3,  ,item4"
+       ↓
+  1. Split on comma: ["item1", " item2 ", "item3", "  ", "item4"]
+       ↓
+  2. Trim whitespace: ["item1", "item2", "item3", "", "item4"]  
+       ↓
+  3. Filter empty: ["item1", "item2", "item3", "item4"]
+       ↓
+  Output: Value.Arr := ["item1", "item2", "item3", "item4"]
+  
+  Examples:
+    "a,b,c"       → ["a", "b", "c"]
+    "x, y , z"    → ["x", "y", "z"] (whitespace trimmed)
+    "single"      → ["single"]
+    ""            → [] (empty array)
+    "a,,b"        → ["a", "b"] (empty segments filtered)
+}
 function TArgParser.ParseArrayValue(const ValueStr: string; var Value: TArgValue): Boolean;
 var
   Parts: TStringDynArray;
   i: Integer;
   s: string;
 begin
+  // Split input string on comma delimiter
   Parts := SplitString(ValueStr, ',');
+  
+  // Process each segment: trim whitespace and filter empties
   for i := 0 to High(Parts) do
   begin
-    s := Trim(Parts[i]);
-    if s <> '' then
+    s := Trim(Parts[i]);  // Remove leading/trailing whitespace
+    if s <> '' then       // Skip empty segments
       AppendToArray(Value.Arr, s);
   end;
-  Result := True;
+  
+  Result := True;  // Array parsing never fails (worst case: empty array)
 end;
 
 procedure TArgParser.ResetParseState;
@@ -345,6 +573,7 @@ function TArgParser.ParseOptionValue(const OptionIdx: Integer; var HasValue: Boo
 begin
   { Based on option type and HasValue/ValueStr, populate Value.
     - Booleans: presence implies True unless an explicit value is provided.
+      Special case: --no-<option> sets boolean options to False.
     - Non-booleans: use inline value if present; otherwise consume next token if it isn't an option.
     - Required string options: reject empty values.
     - Perform type conversion using ParseValue and surface clear errors.
@@ -354,7 +583,7 @@ begin
   // Boolean options: present means true unless explicit value provided
   if FOptions[OptionIdx].ArgType = atBoolean then
   begin
-    // Support --no-<long> negation form
+    // Support --no-<long> negation form (e.g., --no-verbose for a "verbose" option)
     if (Pos('--no-', CurrentOpt) = 1) and (SameText(Copy(CurrentOpt, 6, MaxInt), FOptions[OptionIdx].LongOpt)) then
     begin
       Value.Bool := False;
@@ -470,6 +699,92 @@ begin
     end;
   end;
 end;
+
+{===============================================================================
+  MAIN PARSING ALGORITHM
+  
+  The Parse method implements the core argument parsing logic. It processes
+  tokenized command-line arguments and matches them against defined options,
+  handling type conversion, validation, and result storage.
+
+  PARSING PIPELINE OVERVIEW:
+  
+  Input: Tokenized arguments from ArgTokenizer
+       ↓
+  ┌─────────────────────────────────────────────────────────────────────────┐
+  │                        PARSING PIPELINE                                 │
+  ├─────────────────────────────────────────────────────────────────────────┤
+  │ 1. INITIALIZATION                                                       │
+  │    • Reset error state                                                  │
+  │    • Clear previous results                                             │
+  │    • Build positional argument order list                               │
+  │    • Tokenize input arguments                                           │
+  │                                                                         │
+  │ 2. TOKEN PROCESSING LOOP                                                │
+  │    For each token:                                                      │
+  │    ┌─────────────────┐                                                  │
+  │    │ Token Analysis  │                                                  │
+  │    └─────────────────┘                                                  │
+  │           │                                                             │
+  │           ▼                                                             │
+  │    ┌─────────────────┐     ┌─────────────────┐                          │
+  │    │ Positional?     │────>│ Match Position  │                          │
+  │    └─────────────────┘     └─────────────────┘                          │
+  │           │                                                             │
+  │           ▼                                                             │
+  │    ┌─────────────────┐     ┌─────────────────┐                          │
+  │    │ Option Token?   │────>│ Lookup Option   │                          │
+  │    └─────────────────┘     └─────────────────┘                          │
+  │           │                         │                                   │
+  │           ▼                         ▼                                   │
+  │    ┌─────────────────┐     ┌─────────────────┐                          │
+  │    │ Parse Value     │     │ Type Convert    │                          │
+  │    └─────────────────┘     └─────────────────┘                          │
+  │           │                         │                                   │
+  │           ▼                         ▼                                   │
+  │    ┌─────────────────┐     ┌─────────────────┐                          │
+  │    │ Run Callbacks   │     │ Store Result    │                          │
+  │    └─────────────────┘     └─────────────────┘                          │
+  │                                                                         │
+  │ 3. VALIDATION                                                           │
+  │    • Check all required options were provided                           │
+  │    • Report first missing required option if any                        │
+  │                                                                         │
+  │ 4. CLEANUP                                                              │
+  │    • Finalize temporary values                                          │
+  │    • Set error state if validation failed                               │
+  └─────────────────────────────────────────────────────────────────────────┘
+
+  OPTION MATCHING ALGORITHM:
+  
+  Token OptName → FLookup Map → Option Index → FOptions[Index]
+  
+  Example:
+    Token: {OptName: "--verbose"}
+         ↓
+    FLookup["--verbose"] → Index 3
+         ↓  
+    FOptions[3] → {ShortOpt: 'v', LongOpt: "verbose", ArgType: atBoolean}
+
+  VALUE PARSING FLOW:
+  
+  Input Token → Extract ValueStr → Type-Specific Parser → Validated TArgValue
+  
+  Examples:
+    "--count=5"     → "5"        → ParseIntegerValue → {Int: 5}
+    "-v"            → ""         → ParseBooleanValue → {Bool: true}  
+    "--file=a.txt"  → "a.txt"    → ParseStringValue  → {Str: "a.txt"}
+    "--tags=a,b,c"  → "a,b,c"    → ParseArrayValue   → {Arr: ["a","b","c"]}
+
+  ERROR HANDLING STRATEGY:
+  
+  Any parsing error immediately:
+  1. Calls SetError() with descriptive message
+  2. Sets Result := False and exits
+  3. Preserves error state for caller inspection
+  4. Ensures proper memory cleanup in finally block
+
+===============================================================================}
 
 {-------------------------------------------------------------------------------
   Parse
@@ -602,6 +917,7 @@ begin
           if (FOptions[OptionIdx].NArgs = -1) and (FOptions[OptionIdx].ArgType in [atArray, atString]) then
           begin
             // collect subsequent non-option tokens as part of this positional
+            // Note: multiple tokens are joined with commas for array/string greedy positionals
             while (tIdx < High(Tokens)) and (Tokens[tIdx+1].Kind = tkPositional) do
             begin
               ValueStr := ValueStr + ',' + Tokens[tIdx+1].ValueStr;
