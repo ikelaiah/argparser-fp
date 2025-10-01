@@ -460,7 +460,10 @@ begin
       end;
       if not FoundRequired then
       begin
-        SetError('Missing required option: --' + FOptions[j].LongOpt);
+        if FOptions[j].IsPositional then
+          SetError('Missing required positional argument: ' + FOptions[j].LongOpt)
+        else
+          SetError('Missing required option: --' + FOptions[j].LongOpt);
         Result := False;
         Exit;
       end;

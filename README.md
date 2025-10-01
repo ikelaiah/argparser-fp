@@ -263,8 +263,9 @@ Note: v0.4.0 introduced a dedicated `ArgTokenizer` unit and focused tokenizer un
 - **Cleaner Type Parsing**: Split the complex `ParseValue` method into focused type-specific parsing functions for better maintainability.
 - **Simplified Tokenizer**: Extracted helper functions in ArgTokenizer to improve code readability and reduce complexity.
 - **Streamlined Methods**: Consolidated duplicate initialization patterns in `AddXXX` methods and simplified array operations throughout the codebase.
+- **Improved Error Messages**: Fixed misleading error messages for missing required positional arguments to follow standard CLI conventions.
 
-Note (v0.7.0): This release contains only internal simplifications and refactoring. All public APIs remain unchanged and fully backward compatible.
+Note (v0.7.0): This release contains internal simplifications, refactoring, and improved error messaging. All public APIs remain unchanged and fully backward compatible.
 
 ## 🤝 Contributing
 

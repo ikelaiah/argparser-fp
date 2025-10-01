@@ -14,7 +14,11 @@ Changed
 - **Simplified Tokenizer**: Extracted helper functions in ArgTokenizer to improve code readability and reduce complexity.
 - **Streamlined Methods**: Consolidated duplicate initialization patterns in `AddXXX` methods and simplified array operations throughout the codebase.
 
-Note: This release contains only internal simplifications and refactoring. All public APIs remain unchanged and fully backward compatible.
+Fixed
+
+- **Improved Error Messages**: Fixed misleading error messages for missing required positional arguments. Now correctly shows "Missing required positional argument: filename" instead of "Missing required option: --filename" for better user experience and consistency with CLI conventions.
+
+Note: This release contains internal simplifications, refactoring, and improved error messaging. All public APIs remain unchanged and fully backward compatible.
 
 ## [0.6.1] - 2025-10-01
 
