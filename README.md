@@ -224,11 +224,9 @@ begin
 end;
 ```
 
-  If you previously used `ParseCommandLineKnown`, it continues to work as before; `ParseCommandLine` simply provides the same `--` semantics with a simpler call-site.
+**Important**: the parser no longer prints help or exits during parsing. The presence of `-h`/`--help` sets the built-in `help` flag; after calling `ParseCommandLine` your program should check `Parser.HasError` and `Parser.GetBoolean('help')` and then call `Parser.ShowUsage` or `Parser.ShowHelp` and exit if appropriate. This prevents the parser from freeing internal resources unexpectedly while your program continues running.
 
-Important: the parser no longer prints help or exits during parsing. The presence of `-h`/`--help` sets the built-in `help` flag; after calling `ParseCommandLine` your program should check `Parser.HasError` and `Parser.GetBoolean('help')` and then call `Parser.ShowUsage` or `Parser.ShowHelp` and exit if appropriate. This prevents the parser from freeing internal resources unexpectedly while your program continues running.
-
-Additional notes
+**Additional notes**
 
 - Boolean negation: long boolean options also support a `--no-<name>` form to explicitly set a boolean flag to False. Example: `--no-verbose`.
 - Positional arguments: `AddPositional` creates ordered (positional) arguments. Use the optional `NArgs` parameter to control how many tokens a positional consumes:
@@ -241,7 +239,8 @@ For deeper details and examples, see the [Beginner's Guide](docs/ArgParser.md#9-
 
 ## 📖 System Requirements
 
-- **Compiler**: Free Pascal Compiler (FPC) 3.2.2+
+- **Compiler**: FPC 3.2.2+
+- **IDE**: Lazarus 4.0+ (recommended, for running the examples and tests)
 - **Platforms**: Windows, Linux (cross-platform by design)
 - **Dependencies**: None. Uses only standard FPC RTL units.
 
