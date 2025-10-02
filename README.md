@@ -8,15 +8,15 @@
 
 A lightweight, record-based command-line argument parser for Free Pascal. `ArgParser-FP` is designed for small to medium console applications, offering a clean API to handle arguments with minimal setup.
 
-Why use ArgParser-FP
+**Why use ArgParser-FP**
 
 - Small, dependency-free, and focused on console apps built with Free Pascal.
 
 - Compact API: define options, parse once, and retrieve typed values.
 
-Quickstart — run in under 30 seconds
+**Quickstart — run in under 30 seconds**
 
-1. Copy `src/ArgParser.pas` into your project and add `ArgParser` to `uses`.
+1. Copy both `src/ArgParser.pas` and `src/ArgTokenizer.pas` into your project folder, and add `ArgParser` to `uses`.
 
 2. Save this minimal program as `quick.pas` and compile:
 
@@ -34,8 +34,18 @@ begin
   
   P.ParseCommandLine;
   
+  if P.HasError then
+  begin
+    Writeln('Error: ', P.Error);
+    P.ShowUsage;
+    Exit;
+  end;
+  
   if P.GetBoolean('help') then 
+  begin
     P.ShowHelp;
+    Exit;
+  end;
   
   Writeln('File=',P.GetString('file'));
 end.
@@ -62,8 +72,8 @@ More examples and full docs are below. If you like short, clear APIs, try the `e
 - **Default Values:** Provide default values for optional arguments.
 
 
-
 Here is a complete example of a simple application:
+
 ```pascal
 // File: examples/MyApp/MyApp.pas
 program MyApp;
@@ -221,7 +231,10 @@ Important: the parser no longer prints help or exits during parsing. The presenc
 Additional notes
 
 - Boolean negation: long boolean options also support a `--no-<name>` form to explicitly set a boolean flag to False. Example: `--no-verbose`.
-- Positional arguments: `AddPositional` creates ordered (positional) arguments. Use the optional `NArgs` parameter to control how many tokens a positional consumes. `NArgs = -1` means ‘‘greedy’’ (consume until the next option or the end of the line).
+- Positional arguments: `AddPositional` creates ordered (positional) arguments. Use the optional `NArgs` parameter to control how many tokens a positional consumes:
+  - `NArgs = 0` (default): single token
+  - `NArgs = -1`: greedy mode (consume all remaining tokens until next option or end)
+  - Note: Values >0 are accepted but currently behave as 0 (single token)
 - AllowMultiple / GetAll*: For options that can appear multiple times (for example `--tag a --tag b`), use the `GetAll*` helpers (e.g., `GetAllString`, `GetAllArray`) to retrieve every occurrence in the order parsed.
 
 For deeper details and examples, see the [Beginner's Guide](docs/ArgParser.md#9-parsing-rules-and-behavior) and the [Cheat Sheet](docs/cheat-sheet.md#examples-tokens-and-args-arrays).
@@ -234,9 +247,8 @@ For deeper details and examples, see the [Beginner's Guide](docs/ArgParser.md#9-
 
 ## 📦 Installation
 
-1. Copy the `src/` files (at least `src/ArgParser.pas` and `src/ArgTokenizer.pas`) into your project folder or add the `src/` folder to your build path.
-2. Add `ArgParser` to your program's `uses` clause.
-3. Compile with FPC:
+1. Copy both `src/ArgParser.pas` and `src/ArgTokenizer.pas` into your project folder, and add `ArgParser` to `uses`.
+2. Compile with FPC:
 
 ```bash
 fpc MyProgram.pas
