@@ -41,14 +41,12 @@ interface
 uses
   Classes, Types;
 
-
-
-
 var
   // Global configuration: If True, small combined short flags like -abc are split into -a -b -c
   // This affects how TokenizeArgs processes combined short options:
   //   True:  "-abc" → ["-a", "-b", "-c"] (3 separate option tokens)
   //   False: "-abc" → ["-abc"] (1 combined option token)
+  // Note: Only applies to 3 or fewer letters. Longer sequences are treated as short option with inline value.
   SplitCombinedShorts: Boolean = True;
 
 type
@@ -63,27 +61,27 @@ type
     Token Structure Examples:
     
     1. Long option with value:    "--file=test.txt"
-       ┌─────────┬──────────┬─────────┬──────────────┐
-       │ Kind    │ OptName  │HasValue │ ValueStr     │
-       │tkOption │"--file"  │ true    │ "test.txt"   │
-       └─────────┴──────────┴─────────┴──────────────┘
+       ┌─────────┬───────────────┬──────────┬─────────┬──────────────┐
+       │ Kind    │     Raw       │ OptName  │HasValue │ ValueStr     │
+       │tkOption │"--file=test...│"--file"  │ true    │ "test.txt"   │
+       └─────────┴───────────────┴──────────┴─────────┴──────────────┘
     
     2. Short option flag:        "-v"  
-       ┌─────────┬──────────┬─────────┬──────────────┐
-       │ Kind    │ OptName  │HasValue │ ValueStr     │
-       │tkOption │"-v"      │ false   │ ""           │
-       └─────────┴──────────┴─────────┴──────────────┘
+       ┌─────────┬───────────────┬──────────┬─────────┬──────────────┐
+       │ Kind    │     Raw       │ OptName  │HasValue │ ValueStr     │
+       │tkOption │"-v"           │"-v"      │ false   │ ""           │
+       └─────────┴───────────────┴──────────┴─────────┴──────────────┘
     
     3. Positional argument:      "filename.txt"
-       ┌─────────────┬──────────┬─────────┬──────────────┐
-       │ Kind        │ OptName  │HasValue │ ValueStr     │
-       │tkPositional │""        │ false   │"filename.txt"│
-       └─────────────┴──────────┴─────────┴──────────────┘
+       ┌─────────────┬───────────────┬──────────┬─────────┬──────────────┐
+       │ Kind        │     Raw       │ OptName  │HasValue │ ValueStr     │
+       │tkPositional │"filename.txt" │""        │ false   │"filename.txt"│
+       └─────────────┴───────────────┴──────────┴─────────┴──────────────┘
   }
   TArgToken = record
     Kind: TArgTokenKind;     // Classification: option vs positional
-    Raw: string;             // Original token text as provided by user
-    OptName: string;         // For options: normalized form ('-x' or '--name')
+    Raw: string;             // Original token text as provided by user (preserved for error messages)
+    OptName: string;         // For options: normalized form ('-x' or '--name'); empty for positionals
     HasValue: Boolean;       // True if value was provided inline (--name=value)
     ValueStr: string;        // Inline value text or positional content
   end;

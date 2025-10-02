@@ -104,7 +104,7 @@ type
     IsPositional: Boolean; { True for positional arguments }
     PositionIndex: Integer; { Order index for positionals (0-based) }
     AllowMultiple: Boolean; { Allow repeated occurrences (accumulate) }
-    NArgs: Integer;        { 0 = single token (default), -1 = greedy (consume until next option, joined with commas), >0 = fixed count }
+    NArgs: Integer;        { Number of tokens to consume: 0 = single token (default), -1 = greedy (consume all remaining until next option, joined with commas). Note: >0 values are accepted but currently behave as 0 }
   end;
 
   { TOptionsArray: Dynamic array of TArgOption records. }
@@ -132,7 +132,7 @@ type
     FResults: TParseResults;  { Parsed results }
     FLeftovers: TStringDynArray; { Unknown/unconsumed tokens when using ParseKnown }
     FParseKnown: Boolean; { If true, unknown tokens are returned in Leftovers instead of error }
-    FLookup: TStringList; { maps '-x' and '--long' to option index (as string) }
+    FLookup: TStringList; { Maps '-x' and '--long' to option index (as string); case-insensitive for fast lookup }
     FSplitCombinedShorts: Boolean; { Per-parser override for tokenizer combined-short splitting }
 
     { Locate option by input switch. }
@@ -172,9 +172,12 @@ type
     procedure Init;
     { Add a new option with all parameters including callbacks. }
     procedure Add(const ShortOpt: Char; const LongOpt: string; const ArgType: TArgType; const HelpText: string; const Callback: TArgCallback; const CallbackClass: TArgCallbackClass; const Required: Boolean; const DefaultValue: TArgValue);
-    { Parse command-line arguments directly from ParamStr }
+    { Parse command-line arguments directly from ParamStr (program's actual command-line).
+      Handles "--" separator: everything after "--" goes to Leftovers. }
     procedure ParseCommandLine;
-  { Parse command-line with support for `--` separator; leftovers can be retrieved via GetLeftovers }
+  { Parse command-line with support for `--` separator and unknown options.
+    Unknown options and tokens after "--" are returned in Leftovers instead of causing errors.
+    Useful for wrapper programs that pass remaining args to another program. }
   procedure ParseCommandLineKnown(out Leftovers: TStringDynArray);
     { Enable or disable AllowMultiple for a named long option. Returns silently if not found. }
     procedure SetAllowMultiple(const LongOpt: string; const Value: Boolean);
@@ -201,14 +204,24 @@ type
     Parameters:
       - Name: logical name used to retrieve the value(s)
       - ArgType: type of the positional (atString, atInteger, atFloat, atBoolean, atArray)
-      - NArgs: number of tokens to consume: 0 = single token (default), >0 fixed count, -1 = greedy (consume until next option/end, joined with commas for string/array types)
+      - NArgs: number of tokens to consume: 0 = single token (default), -1 = greedy (consume all remaining non-option tokens, joined with commas). Note: >0 values are accepted but currently behave as 0
+    
     Positionals are matched in the order they are added. Greedy positionals (NArgs=-1)
     will consume all remaining non-option tokens and join them with commas.
+    
+    Example:
+      parser.AddPositional('input', atString, 'Input file');
+      parser.AddPositional('output', atString, 'Output file');
+      Command: myapp input.txt output.txt → input='input.txt', output='output.txt'
   }
   procedure AddPositional(const Name: string; const ArgType: TArgType; const HelpText: string; const Default: string = ''; const Required: Boolean = False; const NArgs: Integer = 0);
   { Return all occurrences for options (accumulated).
     Use these helpers when an option may appear multiple times (AllowMultiple) or when
     working with array-like options. Values are returned in the order parsed.
+    
+    Example:
+      parser.SetAllowMultiple('verbose', True);
+      Command: myapp -v -v -v → GetAllBoolean('verbose') returns [true, true, true]
   }
   function GetAllString(const LongOpt: string): TStringDynArray;
   function GetAllInteger(const LongOpt: string): TIntegerDynArray;
@@ -220,7 +233,9 @@ type
   { Return leftovers captured from the last ParseCommandLine call }
   function GetLeftovers: TStringDynArray;
   property Leftovers: TStringDynArray read GetLeftovers;
-    { Accessors for parsed values by long option name. }
+    { Accessors for parsed values by long option name.
+      Note: These return the MOST RECENT value if an option appears multiple times.
+      Use GetAll* methods to retrieve all occurrences. }
     function GetString(const LongOpt: string): string;
     function GetInteger(const LongOpt: string): Integer;
     function GetFloat(const LongOpt: string): Double;
