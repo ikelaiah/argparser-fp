@@ -258,11 +258,6 @@ fpc MyProgram.pas
 
 For detailed documentation on all available procedures and functions, please see the **[Beginner's Guide](docs/ArgParser.md)** and the **[Cheat Sheet](docs/cheat-sheet.md)**.
 
-## 💬 Community & Support
-
-- **Questions?** [Open a discussion](https://github.com/ikelaiah/argparser-fp/discussions)
-- **Found a bug?** [Report an issue](https://github.com/ikelaiah/argparser-fp/issues)
-
 ## ✅ Testing
 
 1. Open the `TestRunner.lpi` using Lazarus IDE
